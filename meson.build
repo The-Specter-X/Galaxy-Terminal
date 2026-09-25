@@ -20,3 +20,8 @@ test_exe = executable('test-settings', 'tests/settings-test.c', 'src/settings.c'
   install: false)
 test('settings', test_exe)
 
+executable('test-preferences-smoke',
+  'tests/preferences-smoke.c', 'src/preferences.c', 'src/settings.c',
+  include_directories: include_directories('src'),
+  dependencies: [gtk, vte, xapp],
+  install: false)

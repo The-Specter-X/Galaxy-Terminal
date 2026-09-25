@@ -41,8 +41,16 @@ static void test_round_trip(void)
     g_assert_cmpint(s->scrollback, ==, 22000);
     g_assert_true(s->auto_copy);
     g_assert_cmpstr(s->shortcuts[ACT_ZOOM_IN], ==, "");
-    galaxy_settings_remove_profile(s, "Work");
+    g_assert_true(galaxy_settings_rename_profile(s, "Work", "Workstation"));
+    g_assert_false(galaxy_settings_rename_profile(s, "Workstation", "Default"));
     g_assert_null(galaxy_settings_profile(s, "Work"));
+    galaxy_settings_save(s);
+    galaxy_settings_free(s);
+
+    s = galaxy_settings_new();
+    g_assert_nonnull(galaxy_settings_profile(s, "Workstation"));
+    galaxy_settings_remove_profile(s, "Workstation");
+    g_assert_null(galaxy_settings_profile(s, "Workstation"));
     galaxy_settings_free(s);
 }
 

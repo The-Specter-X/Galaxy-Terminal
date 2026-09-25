@@ -53,3 +53,4 @@ if [[ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]; then
 fi
 
 dbus-run-session -- timeout 20s ./build/galaxy-terminal -- /bin/true
+dbus-run-session -- timeout 20s ./build/test-preferences-smoke

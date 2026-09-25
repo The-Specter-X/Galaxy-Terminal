@@ -542,6 +542,29 @@ static void on_menu_find(GtkMenuItem *item, gpointer data)
     galaxy_window_show_search(data);
 }
 
+static void on_menu_rename_tab(GtkMenuItem *item, gpointer data)
+{
+    GalaxyWindow *win = data;
+    (void)item;
+    GalaxyTab *tab = galaxy_current_tab(win);
+    if (!tab) return;
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Rename tab", GTK_WINDOW(win->window),
+        GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL, "Rename", GTK_RESPONSE_ACCEPT, NULL);
+    GtkWidget *entry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(entry), tab->custom_title ? tab->custom_title : "");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Leave blank to follow the terminal title");
+    gtk_container_set_border_width(GTK_CONTAINER(entry), 12);
+    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), entry);
+    gtk_widget_show_all(dialog);
+    gtk_widget_grab_focus(entry);
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        g_free(tab->custom_title);
+        tab->custom_title = g_strdup(gtk_entry_get_text(GTK_ENTRY(entry)));
+        update_title(tab);
+    }
+    gtk_widget_destroy(dialog);
+}
+
 static void on_menu_preferences(GtkMenuItem *item, gpointer data)
 {
     GalaxyWindow *win = data;
@@ -641,6 +664,7 @@ GalaxyWindow *galaxy_window_new(GalaxyApp *app)
     GtkWidget *menu = gtk_menu_new();
     append_menu(menu, "New Tab", G_CALLBACK(on_menu_new_tab), win);
     append_menu(menu, "New Window", G_CALLBACK(on_menu_new_window), win);
+    append_menu(menu, "Rename Tab", G_CALLBACK(on_menu_rename_tab), win);
     append_menu(menu, "Find", G_CALLBACK(on_menu_find), win);
     append_menu(menu, "Preferences", G_CALLBACK(on_menu_preferences), win);
     append_menu(menu, "About", G_CALLBACK(on_menu_about), win);

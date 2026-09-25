@@ -156,6 +156,24 @@ GalaxyProfile *galaxy_settings_add_profile(GalaxySettings *s, const char *name)
     return p;
 }
 
+gboolean galaxy_settings_rename_profile(GalaxySettings *s, const char *old_name,
+                                        const char *new_name)
+{
+    GalaxyProfile *profile = galaxy_settings_profile(s, old_name);
+    if (!profile || !new_name || !*new_name || strchr(new_name, '[') ||
+        strchr(new_name, ']') || strchr(new_name, '\n') ||
+        (g_strcmp0(old_name, new_name) != 0 && galaxy_settings_profile(s, new_name)))
+        return FALSE;
+    if (g_strcmp0(old_name, new_name) == 0) return TRUE;
+    if (g_strcmp0(s->default_profile, old_name) == 0) {
+        g_free(s->default_profile);
+        s->default_profile = g_strdup(new_name);
+    }
+    g_free(profile->name);
+    profile->name = g_strdup(new_name);
+    return TRUE;
+}
+
 void galaxy_settings_remove_profile(GalaxySettings *s, const char *name)
 {
     if (s->profiles->len < 2) return;

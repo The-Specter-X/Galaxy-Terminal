@@ -52,4 +52,6 @@ void galaxy_settings_set_changed(GalaxySettings *settings,
 void galaxy_settings_save(GalaxySettings *settings);
 GalaxyProfile *galaxy_settings_profile(GalaxySettings *settings, const char *name);
 GalaxyProfile *galaxy_settings_add_profile(GalaxySettings *settings, const char *name);
+gboolean galaxy_settings_rename_profile(GalaxySettings *settings, const char *old_name,
+                                        const char *new_name);
 void galaxy_settings_remove_profile(GalaxySettings *settings, const char *name);

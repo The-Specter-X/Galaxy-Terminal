@@ -162,6 +162,47 @@ static void on_profile_remove(GtkButton *button, gpointer user_data)
     save(p);
 }
 
+static void on_profile_rename(GtkButton *button, gpointer user_data)
+{
+    Preferences *p = user_data;
+    (void)button;
+    GalaxyProfile *profile = selected_profile(p);
+    if (!profile) return;
+    g_autofree char *old_name = g_strdup(profile->name);
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Rename profile", GTK_WINDOW(p->window),
+        GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL, "Rename", GTK_RESPONSE_ACCEPT, NULL);
+    GtkWidget *entry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(entry), old_name);
+    gtk_container_set_border_width(GTK_CONTAINER(entry), 12);
+    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), entry);
+    GtkWidget *error = gtk_label_new("");
+    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), error);
+    gtk_widget_show_all(dialog);
+    gtk_widget_grab_focus(entry);
+    while (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        g_autofree char *name = g_strstrip(g_strdup(gtk_entry_get_text(GTK_ENTRY(entry))));
+        if (galaxy_settings_rename_profile(p->app->settings, old_name, name)) {
+            for (GList *w = p->app->windows; w; w = w->next) {
+                GalaxyWindow *win = w->data;
+                GtkNotebook *book = GTK_NOTEBOOK(win->notebook);
+                for (int i = 0; i < gtk_notebook_get_n_pages(book); ++i) {
+                    GtkWidget *page = gtk_notebook_get_nth_page(book, i);
+                    GalaxyTab *tab = g_object_get_data(G_OBJECT(page), "galaxy-tab");
+                    if (g_strcmp0(tab->profile_name, old_name) != 0) continue;
+                    g_free(tab->profile_name);
+                    tab->profile_name = g_strdup(name);
+                }
+            }
+            profile_populate(p, name);
+            on_profile_selected(NULL, p);
+            save(p);
+            break;
+        }
+        gtk_label_set_text(GTK_LABEL(error), "Enter a unique name without [ or ].");
+    }
+    gtk_widget_destroy(dialog);
+}
+
 static void on_profile_default(GtkButton *button, gpointer user_data)
 {
     Preferences *p = user_data;
@@ -339,8 +380,10 @@ static GtkWidget *build_profiles(Preferences *p)
     gtk_widget_set_hexpand(p->profile_combo, TRUE);
     gtk_box_pack_start(GTK_BOX(controls), p->profile_combo, TRUE, TRUE, 0);
     GtkWidget *add = gtk_button_new_with_label("Add");
+    GtkWidget *rename = gtk_button_new_with_label("Rename");
     p->remove_button = gtk_button_new_with_label("Remove");
     gtk_box_pack_start(GTK_BOX(controls), add, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(controls), rename, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(controls), p->remove_button, FALSE, FALSE, 0);
     p->default_button = gtk_button_new_with_label("Make default");
     gtk_box_pack_start(GTK_BOX(box), p->default_button, FALSE, FALSE, 0);
@@ -385,6 +428,7 @@ static GtkWidget *build_profiles(Preferences *p)
     row(box, "Starting directory", p->cwd);
     g_signal_connect(p->profile_combo, "changed", G_CALLBACK(on_profile_selected), p);
     g_signal_connect(add, "clicked", G_CALLBACK(on_profile_add), p);
+    g_signal_connect(rename, "clicked", G_CALLBACK(on_profile_rename), p);
     g_signal_connect(p->remove_button, "clicked", G_CALLBACK(on_profile_remove), p);
     g_signal_connect(p->default_button, "clicked", G_CALLBACK(on_profile_default), p);
     g_signal_connect(p->font, "font-set", G_CALLBACK(on_font_changed), p);

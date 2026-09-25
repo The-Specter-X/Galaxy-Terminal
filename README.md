@@ -36,9 +36,12 @@ galaxy-terminal --working-directory /tmp -- htop
 ```
 
 Each tab has its own PTY and process. A new tab opened with **+** inherits the
-current tab's directory when the shell reports it to VTE; otherwise it uses
-the directory in which the existing tab started. Changing a profile affects
-new tabs and the appearance of existing tabs using that profile. Changing
+current tab's directory when the shell reports it to VTE, or via its process
+on Linux; otherwise it uses the directory in which the existing tab started.
+The menu lets you rename a tab, and terminal title escape sequences update
+tabs without a custom name. Profiles can be added, renamed, removed, and set
+as the default. Changing a profile affects new tabs and the appearance of
+existing tabs using that profile. Changing
 the profile's shell does not replace already running shells.
 
 The preferences window edits `~/.config/galaxy-terminal/settings.ini` (or the
