@@ -35,6 +35,7 @@ struct _GalaxyTab {
     char *initial_cwd;
     double font_scale;
     GPid pid;
+    GCancellable *spawn_cancel;
     gboolean shell_session;
     gboolean closing;
 };

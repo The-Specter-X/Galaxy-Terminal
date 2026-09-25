@@ -20,6 +20,10 @@ static void test_round_trip(void)
     g_free(p->palette);
     p->palette = g_strdup("Custom");
     p->opacity = 0.62;
+    g_free(p->cwd);
+    p->cwd = g_strdup("/tmp");
+    g_free(p->ansi[3]);
+    p->ansi[3] = g_strdup("#123456");
     s->auto_copy = TRUE;
     s->scrollback = 22000;
     g_free(s->shortcuts[ACT_ZOOM_IN]);
@@ -32,6 +36,8 @@ static void test_round_trip(void)
     g_assert_nonnull(p);
     g_assert_cmpstr(p->palette, ==, "Custom");
     g_assert_cmpfloat(p->opacity, ==, 0.62);
+    g_assert_cmpstr(p->cwd, ==, "/tmp");
+    g_assert_cmpstr(p->ansi[3], ==, "#123456");
     g_assert_cmpint(s->scrollback, ==, 22000);
     g_assert_true(s->auto_copy);
     g_assert_cmpstr(s->shortcuts[ACT_ZOOM_IN], ==, "");
@@ -57,4 +63,3 @@ int main(int argc, char **argv)
     g_free(directory);
     return result;
 }
-

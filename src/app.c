@@ -16,6 +16,7 @@ static void tab_free(gpointer data)
     g_free(tab->profile_name);
     g_free(tab->custom_title);
     g_free(tab->initial_cwd);
+    g_clear_object(&tab->spawn_cancel);
     g_free(tab);
 }
 
@@ -32,6 +33,11 @@ static char *tab_directory(GalaxyTab *tab)
     if (!tab) return g_strdup(g_get_home_dir());
     const char *uri = vte_terminal_get_current_directory_uri(tab->terminal);
     char *cwd = uri ? g_filename_from_uri(uri, NULL, NULL) : NULL;
+    if ((!cwd || !g_file_test(cwd, G_FILE_TEST_IS_DIR)) && tab->pid > 0) {
+        g_free(cwd);
+        g_autofree char *link = g_strdup_printf("/proc/%d/cwd", tab->pid);
+        cwd = g_file_read_link(link, NULL);
+    }
     if (!cwd || !g_file_test(cwd, G_FILE_TEST_IS_DIR)) {
         g_free(cwd);
         cwd = g_strdup(tab->initial_cwd);
@@ -76,7 +82,10 @@ static void apply_palette(GalaxyTab *tab)
     if (!gdk_rgba_parse(&background, bg)) gdk_rgba_parse(&background, "#191b24");
     background.alpha = p->opacity;
     for (int i = 0; i < 16; ++i)
-        gdk_rgba_parse(&colors[i], (dark ? ansi_dark : ansi_light)[i]);
+        if (!gdk_rgba_parse(&colors[i],
+                g_strcmp0(p->palette, "Custom") == 0 ? p->ansi[i]
+                    : (dark ? ansi_dark : ansi_light)[i]))
+            gdk_rgba_parse(&colors[i], ansi_dark[i]);
     vte_terminal_set_colors(tab->terminal, &foreground, &background, colors, 16);
     vte_terminal_set_color_cursor(tab->terminal, &foreground);
     g_autoptr(PangoFontDescription) font = pango_font_description_from_string(p->font);
@@ -142,6 +151,7 @@ static void close_tab(GalaxyTab *tab)
 {
     if (!tab || tab->closing || !confirm_tab_close(tab)) return;
     tab->closing = TRUE;
+    if (tab->spawn_cancel) g_cancellable_cancel(tab->spawn_cancel);
     GalaxyWindow *win = tab->owner;
     if (gtk_notebook_get_n_pages(GTK_NOTEBOOK(win->notebook)) == 1) {
         gtk_widget_destroy(win->window);
@@ -209,6 +219,50 @@ static char *preferred_shell(GalaxyProfile *p)
     return g_strdup("/bin/sh");
 }
 
+static gboolean copy_selection_later(gpointer data)
+{
+    VteTerminal *terminal = data;
+    if (vte_terminal_get_has_selection(terminal))
+        vte_terminal_copy_clipboard_format(terminal, VTE_FORMAT_TEXT);
+    return G_SOURCE_REMOVE;
+}
+
+static void on_context_copy(GtkMenuItem *item, gpointer data)
+{
+    (void)item;
+    vte_terminal_copy_clipboard_format(VTE_TERMINAL(data), VTE_FORMAT_TEXT);
+}
+
+static void on_context_paste(GtkMenuItem *item, gpointer data)
+{
+    (void)item;
+    vte_terminal_paste_clipboard(VTE_TERMINAL(data));
+}
+
+static void on_context_select_all(GtkMenuItem *item, gpointer data)
+{
+    (void)item;
+    vte_terminal_select_all(VTE_TERMINAL(data));
+}
+
+static void show_context_menu(GalaxyTab *tab, GdkEventButton *event)
+{
+    GtkWidget *menu = gtk_menu_new();
+    GtkWidget *copy = gtk_menu_item_new_with_label("Copy");
+    GtkWidget *paste = gtk_menu_item_new_with_label("Paste");
+    GtkWidget *select_all = gtk_menu_item_new_with_label("Select All");
+    gtk_widget_set_sensitive(copy, vte_terminal_get_has_selection(tab->terminal));
+    g_signal_connect(copy, "activate", G_CALLBACK(on_context_copy), tab->terminal);
+    g_signal_connect(paste, "activate", G_CALLBACK(on_context_paste), tab->terminal);
+    g_signal_connect(select_all, "activate", G_CALLBACK(on_context_select_all), tab->terminal);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), copy);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), paste);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), select_all);
+    g_signal_connect_swapped(menu, "selection-done", G_CALLBACK(gtk_widget_destroy), menu);
+    gtk_widget_show_all(menu);
+    gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+}
+
 static gboolean on_terminal_mouse_release(GtkWidget *widget, GdkEventButton *event,
                                           gpointer data)
 {
@@ -227,11 +281,21 @@ static gboolean on_terminal_mouse_release(GtkWidget *widget, GdkEventButton *eve
             return TRUE;
         }
     }
-    if (event->button == 1 && tab->owner->app->settings->auto_copy &&
-        vte_terminal_get_has_selection(tab->terminal))
-        vte_terminal_copy_clipboard_format(tab->terminal, VTE_FORMAT_TEXT);
+    if (event->button == 1 && tab->owner->app->settings->auto_copy)
+        g_idle_add_full(G_PRIORITY_DEFAULT_IDLE,
+                        copy_selection_later,
+                        g_object_ref(tab->terminal), g_object_unref);
     (void)widget;
     return FALSE;
+}
+
+static gboolean on_terminal_mouse_press(GtkWidget *widget, GdkEventButton *event,
+                                        gpointer data)
+{
+    (void)widget;
+    if (event->button != 3 || (event->state & GDK_SHIFT_MASK)) return FALSE;
+    show_context_menu(data, event);
+    return TRUE;
 }
 
 static void search_update(GalaxyWindow *win)
@@ -372,9 +436,11 @@ GalaxyTab *galaxy_tab_new(GalaxyWindow *win, const char *profile_name,
     tab->owner = win;
     tab->profile_name = g_strdup(profile->name);
     tab->custom_title = g_strdup(title);
-    tab->initial_cwd = cwd && g_file_test(cwd, G_FILE_TEST_IS_DIR)
-        ? g_strdup(cwd) : g_strdup(g_get_home_dir());
+    const char *start = cwd ? cwd : (profile->cwd && *profile->cwd ? profile->cwd : NULL);
+    tab->initial_cwd = start && g_file_test(start, G_FILE_TEST_IS_DIR)
+        ? g_strdup(start) : g_strdup(g_get_home_dir());
     tab->font_scale = 1.0;
+    tab->spawn_cancel = g_cancellable_new();
     tab->shell_session = !command || !command[0];
     tab->terminal = VTE_TERMINAL(vte_terminal_new());
     vte_terminal_set_enable_sixel(tab->terminal, FALSE);
@@ -402,8 +468,10 @@ GalaxyTab *galaxy_tab_new(GalaxyWindow *win, const char *profile_name,
     g_signal_connect(tab->terminal, "current-directory-uri-changed",
                      G_CALLBACK(on_current_directory_changed), tab);
     g_signal_connect(tab->terminal, "child-exited", G_CALLBACK(on_child_exited), tab);
-    g_signal_connect_after(tab->terminal, "button-release-event",
-                           G_CALLBACK(on_terminal_mouse_release), tab);
+    g_signal_connect(tab->terminal, "button-release-event",
+                     G_CALLBACK(on_terminal_mouse_release), tab);
+    g_signal_connect(tab->terminal, "button-press-event",
+                     G_CALLBACK(on_terminal_mouse_press), tab);
 
     /* Plain URLs complement OSC 8 hyperlinks supplied by terminal programs. */
     g_autoptr(GError) regex_error = NULL;
@@ -422,7 +490,7 @@ GalaxyTab *galaxy_tab_new(GalaxyWindow *win, const char *profile_name,
     g_weak_ref_init(&result->terminal, G_OBJECT(tab->page));
     vte_terminal_spawn_async(tab->terminal, VTE_PTY_DEFAULT, tab->initial_cwd,
                              argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL,
-                             NULL, -1, NULL, on_spawn_done, result);
+                             NULL, -1, tab->spawn_cancel, on_spawn_done, result);
     update_title(tab);
     gtk_widget_grab_focus(GTK_WIDGET(tab->terminal));
     return tab;
@@ -442,6 +510,18 @@ static void on_settings_dark(GtkSettings *settings, GParamSpec *pspec, gpointer 
     galaxy_app_refresh(data);
 }
 
+static void on_application_startup(GApplication *application, gpointer data)
+{
+    GalaxyApp *app = data;
+    (void)application;
+    /* GTK settings exist after the application has started. */
+    app->dark_mode_manager = G_OBJECT(xapp_dark_mode_manager_new(FALSE));
+    GtkSettings *settings = gtk_settings_get_default();
+    if (settings)
+        g_signal_connect(settings, "notify::gtk-application-prefer-dark-theme",
+                         G_CALLBACK(on_settings_dark), app);
+}
+
 static void on_menu_new_tab(GtkMenuItem *item, gpointer data)
 {
     (void)item;
@@ -453,7 +533,7 @@ static void on_menu_new_window(GtkMenuItem *item, gpointer data)
     GalaxyWindow *win = data;
     (void)item;
     GalaxyWindow *next = galaxy_window_new(win->app);
-    galaxy_tab_new(next, NULL, g_get_home_dir(), NULL, NULL);
+    galaxy_tab_new(next, NULL, NULL, NULL, NULL);
 }
 
 static void on_menu_find(GtkMenuItem *item, gpointer data)
@@ -665,7 +745,10 @@ static int on_command_line(GApplication *application, GApplicationCommandLine *l
         g_free(cwd); g_free(profile); g_free(title); g_strfreev(command);
         return 2;
     }
-    const char *requested_cwd = cwd ? cwd : g_application_command_line_get_cwd(line);
+    GalaxyProfile *selected = galaxy_settings_profile(app->settings,
+        profile ? profile : app->settings->default_profile);
+    const char *requested_cwd = cwd ? cwd : (selected->cwd && *selected->cwd
+        ? selected->cwd : g_application_command_line_get_cwd(line));
     g_autofree char *absolute = g_canonicalize_filename(requested_cwd, g_application_command_line_get_cwd(line));
     if (!g_file_test(absolute, G_FILE_TEST_IS_DIR)) {
         g_application_command_line_printerr(line, "Directory does not exist: %s\n", absolute);
@@ -686,12 +769,9 @@ int main(int argc, char **argv)
     GalaxyApp app = {0};
     app.application = gtk_application_new("org.thespecterx.GalaxyTerminal", G_APPLICATION_HANDLES_COMMAND_LINE);
     g_signal_connect(app.application, "command-line", G_CALLBACK(on_command_line), &app);
+    g_signal_connect(app.application, "startup", G_CALLBACK(on_application_startup), &app);
     app.settings = galaxy_settings_new();
     galaxy_settings_set_changed(app.settings, galaxy_app_refresh, &app);
-    /* XApp tracks the desktop's color scheme for the GTK chrome. */
-    app.dark_mode_manager = G_OBJECT(xapp_dark_mode_manager_new(FALSE));
-    g_signal_connect(gtk_settings_get_default(), "notify::gtk-application-prefer-dark-theme",
-                     G_CALLBACK(on_settings_dark), &app);
     int status = g_application_run(G_APPLICATION(app.application), argc, argv);
     galaxy_settings_free(app.settings);
     g_clear_object(&app.dark_mode_manager);

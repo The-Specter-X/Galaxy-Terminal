@@ -26,15 +26,22 @@ static const char *const default_shortcuts[ACT_COUNT] = {
     "<Alt>6", "<Alt>7", "<Alt>8", "<Alt>9"
 };
 
+static const char *const default_ansi[16] = {
+    "#20232c", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#dcdfe4",
+    "#5b616e", "#ff7b86", "#b3dd91", "#f5d492", "#80c2fb", "#dc9cf1", "#7dd3db", "#ffffff"
+};
+
 static void profile_free(gpointer data)
 {
     GalaxyProfile *p = data;
     g_free(p->name);
     g_free(p->shell);
+    g_free(p->cwd);
     g_free(p->font);
     g_free(p->palette);
     g_free(p->foreground);
     g_free(p->background);
+    for (int i = 0; i < 16; ++i) g_free(p->ansi[i]);
     g_free(p);
 }
 
@@ -98,10 +105,15 @@ static void load_settings(GalaxySettings *s, const char *data, gsize length)
         GalaxyProfile *p = g_new0(GalaxyProfile, 1);
         p->name = g_strdup(name);
         p->shell = get_string(key, groups[i], "Shell", "");
+        p->cwd = get_string(key, groups[i], "WorkingDirectory", "");
         p->font = get_string(key, groups[i], "Font", "Monospace 11");
         p->palette = get_string(key, groups[i], "Palette", "System");
         p->foreground = get_string(key, groups[i], "Foreground", "#ebedf4");
         p->background = get_string(key, groups[i], "Background", "#191b24");
+        for (int j = 0; j < 16; ++j) {
+            g_autofree char *field = g_strdup_printf("AnsiColor%d", j);
+            p->ansi[j] = get_string(key, groups[i], field, default_ansi[j]);
+        }
         p->opacity = g_key_file_has_key(key, groups[i], "Opacity", NULL)
             ? g_key_file_get_double(key, groups[i], "Opacity", NULL) : 1.0;
         p->opacity = CLAMP(p->opacity, 0.25, 1.0);
@@ -133,10 +145,12 @@ GalaxyProfile *galaxy_settings_add_profile(GalaxySettings *s, const char *name)
     GalaxyProfile *p = g_new0(GalaxyProfile, 1);
     p->name = g_strdup(name);
     p->shell = g_strdup("");
+    p->cwd = g_strdup("");
     p->font = g_strdup("Monospace 11");
     p->palette = g_strdup("System");
     p->foreground = g_strdup("#ebedf4");
     p->background = g_strdup("#191b24");
+    for (int i = 0; i < 16; ++i) p->ansi[i] = g_strdup(default_ansi[i]);
     p->opacity = 1.0;
     g_ptr_array_add(s->profiles, p);
     return p;
@@ -226,10 +240,15 @@ void galaxy_settings_save(GalaxySettings *s)
         GalaxyProfile *p = g_ptr_array_index(s->profiles, i);
         g_autofree char *group = g_strdup_printf("Profile %s", p->name);
         g_key_file_set_string(key, group, "Shell", p->shell);
+        g_key_file_set_string(key, group, "WorkingDirectory", p->cwd);
         g_key_file_set_string(key, group, "Font", p->font);
         g_key_file_set_string(key, group, "Palette", p->palette);
         g_key_file_set_string(key, group, "Foreground", p->foreground);
         g_key_file_set_string(key, group, "Background", p->background);
+        for (int j = 0; j < 16; ++j) {
+            g_autofree char *field = g_strdup_printf("AnsiColor%d", j);
+            g_key_file_set_string(key, group, field, p->ansi[j]);
+        }
         g_key_file_set_double(key, group, "Opacity", p->opacity);
     }
     gsize length = 0;

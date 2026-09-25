@@ -17,10 +17,12 @@ extern const char *const galaxy_action_labels[ACT_COUNT];
 typedef struct {
     char *name;
     char *shell;
+    char *cwd;
     char *font;
     char *palette;
     char *foreground;
     char *background;
+    char *ansi[16];
     double opacity;
 } GalaxyProfile;
 
@@ -51,4 +53,3 @@ void galaxy_settings_save(GalaxySettings *settings);
 GalaxyProfile *galaxy_settings_profile(GalaxySettings *settings, const char *name);
 GalaxyProfile *galaxy_settings_add_profile(GalaxySettings *settings, const char *name);
 void galaxy_settings_remove_profile(GalaxySettings *settings, const char *name);
-

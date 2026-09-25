@@ -10,11 +10,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config libgtk-3-dev libvte-2.91-dev libxapp-dev
+          sudo apt-get install -y meson ninja-build pkg-config libgtk-3-dev libvte-2.91-dev libxapp-dev weston dbus-x11
       - name: Configure
         run: meson setup build
       - name: Build
         run: meson compile -C build
       - name: Unit tests
         run: meson test -C build --print-errorlogs
-
+      - name: Wayland launch smoke test
+        run: bash tests/wayland-smoke.sh

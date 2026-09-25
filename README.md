@@ -44,13 +44,16 @@ the profile's shell does not replace already running shells.
 The preferences window edits `~/.config/galaxy-terminal/settings.ini` (or the
 equivalent under `$XDG_CONFIG_HOME`). Changes to that file are reloaded while
 the application runs. A profile can choose the System, Dark, Light, or Custom
-palette and background opacity. The default scrollback is 10,000 lines per
+palette, 16 editable ANSI colors in the Custom palette, an initial directory,
+and background opacity. The default scrollback is 10,000 lines per
 tab. Ctrl+Shift+F searches retained output in the active tab; it does not
 search the shell's command history. Unlimited scrollback is optional.
 
 Selection normally uses the primary selection, where provided by the desktop.
 The optional **Copy mouse selection to clipboard** setting also copies a
-completed mouse selection to the regular clipboard. Ctrl+Shift+C/V copy and
+completed mouse selection to the regular clipboard. Right-click offers Copy,
+Paste, and Select All; Shift+right-click passes the event to the terminal
+program. Ctrl+Shift+C/V copy and
 paste explicitly. Ctrl+plus/minus/0 zooms the active tab. Ctrl+PageUp and
 Ctrl+PageDown switch tabs; all application shortcuts can be reassigned from
 Preferences, while Ctrl+Left/Right remains available to shells for moving
@@ -58,4 +61,3 @@ between words.
 
 Galaxy Terminal intentionally does not keep shells running after its windows
 close. It does not restore sessions or implement terminal image protocols.
-

@@ -13,6 +13,9 @@ typedef struct {
     GtkWidget *background;
     GtkWidget *opacity;
     GtkWidget *shell;
+    GtkWidget *cwd;
+    GtkWidget *ansi_grid;
+    GtkWidget *ansi[16];
     GtkWidget *default_button;
     GtkWidget *remove_button;
     gboolean loading;
@@ -94,6 +97,7 @@ static void on_profile_selected(GtkComboBox *combo, gpointer user_data)
     p->loading = TRUE;
     gtk_font_button_set_font_name(GTK_FONT_BUTTON(p->font), profile->font);
     gtk_entry_set_text(GTK_ENTRY(p->shell), profile->shell);
+    gtk_entry_set_text(GTK_ENTRY(p->cwd), profile->cwd);
     const char *names[] = {"System", "Dark", "Light", "Custom"};
     for (guint i = 0; i < G_N_ELEMENTS(names); ++i)
         if (g_strcmp0(profile->palette, names[i]) == 0)
@@ -103,10 +107,14 @@ static void on_profile_selected(GtkComboBox *combo, gpointer user_data)
         gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(p->foreground), &color);
     if (gdk_rgba_parse(&color, profile->background))
         gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(p->background), &color);
+    for (int i = 0; i < 16; ++i)
+        if (gdk_rgba_parse(&color, profile->ansi[i]))
+            gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(p->ansi[i]), &color);
     gtk_range_set_value(GTK_RANGE(p->opacity), profile->opacity * 100.0);
     gboolean custom = g_strcmp0(profile->palette, "Custom") == 0;
     gtk_widget_set_sensitive(p->foreground, custom);
     gtk_widget_set_sensitive(p->background, custom);
+    gtk_widget_set_sensitive(p->ansi_grid, custom);
     gtk_widget_set_sensitive(p->remove_button, p->app->settings->profiles->len > 1);
     gtk_widget_set_sensitive(p->default_button,
         g_strcmp0(profile->name, p->app->settings->default_profile) != 0);
@@ -188,6 +196,7 @@ static void on_palette_changed(GtkComboBox *combo, gpointer user_data)
     gboolean custom = g_strcmp0(profile->palette, "Custom") == 0;
     gtk_widget_set_sensitive(p->foreground, custom);
     gtk_widget_set_sensitive(p->background, custom);
+    gtk_widget_set_sensitive(p->ansi_grid, custom);
     save(p);
 }
 
@@ -217,6 +226,20 @@ static void on_opacity_changed(GtkRange *range, gpointer user_data)
     }
 }
 
+static void on_ansi_changed(GtkColorButton *button, gpointer user_data)
+{
+    Preferences *p = user_data;
+    if (p->loading) return;
+    GalaxyProfile *profile = selected_profile(p);
+    if (!profile) return;
+    int index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "ansi-index"));
+    GdkRGBA color;
+    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(button), &color);
+    g_free(profile->ansi[index]);
+    profile->ansi[index] = gdk_rgba_to_string(&color);
+    save(p);
+}
+
 static void on_shell_changed(GtkEditable *editable, gpointer user_data)
 {
     Preferences *p = user_data;
@@ -225,6 +248,17 @@ static void on_shell_changed(GtkEditable *editable, gpointer user_data)
     if (!profile) return;
     g_free(profile->shell);
     profile->shell = g_strdup(gtk_entry_get_text(GTK_ENTRY(editable)));
+    save(p);
+}
+
+static void on_cwd_changed(GtkEditable *editable, gpointer user_data)
+{
+    Preferences *p = user_data;
+    if (p->loading) return;
+    GalaxyProfile *profile = selected_profile(p);
+    if (!profile) return;
+    g_free(profile->cwd);
+    profile->cwd = g_strdup(gtk_entry_get_text(GTK_ENTRY(editable)));
     save(p);
 }
 
@@ -323,6 +357,19 @@ static GtkWidget *build_profiles(Preferences *p)
     p->background = gtk_color_button_new();
     row(box, "Custom text color", p->foreground);
     row(box, "Custom background color", p->background);
+    p->ansi_grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(p->ansi_grid), 4);
+    gtk_grid_set_column_spacing(GTK_GRID(p->ansi_grid), 4);
+    for (int i = 0; i < 16; ++i) {
+        p->ansi[i] = gtk_color_button_new();
+        gtk_widget_set_size_request(p->ansi[i], 48, 30);
+        g_autofree char *tip = g_strdup_printf("ANSI color %d", i);
+        gtk_widget_set_tooltip_text(p->ansi[i], tip);
+        g_object_set_data(G_OBJECT(p->ansi[i]), "ansi-index", GINT_TO_POINTER(i));
+        gtk_grid_attach(GTK_GRID(p->ansi_grid), p->ansi[i], i % 4, i / 4, 1, 1);
+        g_signal_connect(p->ansi[i], "color-set", G_CALLBACK(on_ansi_changed), p);
+    }
+    row(box, "Custom ANSI colors", p->ansi_grid);
     p->opacity = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 25, 100, 1);
     gtk_widget_set_size_request(p->opacity, 210, -1);
     gtk_scale_set_digits(GTK_SCALE(p->opacity), 0);
@@ -332,6 +379,10 @@ static GtkWidget *build_profiles(Preferences *p)
     gtk_entry_set_placeholder_text(GTK_ENTRY(p->shell), "System login shell");
     gtk_widget_set_tooltip_text(p->shell, "Executable path for new tabs; empty uses the account's shell");
     row(box, "Shell executable", p->shell);
+    p->cwd = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(p->cwd), "Inherit launch directory");
+    gtk_widget_set_tooltip_text(p->cwd, "Absolute directory for new windows; tabs opened with + inherit the active tab's directory");
+    row(box, "Starting directory", p->cwd);
     g_signal_connect(p->profile_combo, "changed", G_CALLBACK(on_profile_selected), p);
     g_signal_connect(add, "clicked", G_CALLBACK(on_profile_add), p);
     g_signal_connect(p->remove_button, "clicked", G_CALLBACK(on_profile_remove), p);
@@ -342,6 +393,7 @@ static GtkWidget *build_profiles(Preferences *p)
     g_signal_connect(p->background, "color-set", G_CALLBACK(on_color_changed), p);
     g_signal_connect(p->opacity, "value-changed", G_CALLBACK(on_opacity_changed), p);
     g_signal_connect(p->shell, "changed", G_CALLBACK(on_shell_changed), p);
+    g_signal_connect(p->cwd, "changed", G_CALLBACK(on_cwd_changed), p);
     profile_populate(p, p->app->settings->default_profile);
     on_profile_selected(NULL, p);
     return page;
