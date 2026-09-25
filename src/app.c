@@ -413,7 +413,16 @@ static void on_profile_item(GtkMenuItem *item, gpointer data)
 
 static void rebuild_profiles(GalaxyWindow *win)
 {
-    GtkWidget *menu = gtk_menu_new();
+    GtkWidget *menu = gtk_menu_button_get_popup(GTK_MENU_BUTTON(win->profiles_menu));
+    if (!menu) {
+        menu = gtk_menu_new();
+        gtk_menu_button_set_popup(GTK_MENU_BUTTON(win->profiles_menu), menu);
+    } else {
+        GList *items = gtk_container_get_children(GTK_CONTAINER(menu));
+        for (GList *node = items; node; node = node->next)
+            gtk_widget_destroy(GTK_WIDGET(node->data));
+        g_list_free(items);
+    }
     for (guint i = 0; i < win->app->settings->profiles->len; ++i) {
         GalaxyProfile *p = g_ptr_array_index(win->app->settings->profiles, i);
         GtkWidget *item = gtk_menu_item_new_with_label(p->name);
@@ -422,7 +431,6 @@ static void rebuild_profiles(GalaxyWindow *win)
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
     }
     gtk_widget_show_all(menu);
-    gtk_menu_button_set_popup(GTK_MENU_BUTTON(win->profiles_menu), menu);
 }
 
 GalaxyTab *galaxy_tab_new(GalaxyWindow *win, const char *profile_name,
