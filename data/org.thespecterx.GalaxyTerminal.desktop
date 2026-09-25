@@ -1,0 +1,19 @@
+[Desktop Entry]
+Name=Galaxy Terminal
+Comment=Terminal emulator for the Cinnamon desktop
+Exec=galaxy-terminal
+Icon=utilities-terminal
+Type=Application
+Categories=GTK;System;TerminalEmulator;
+StartupNotify=true
+Terminal=false
+Actions=NewWindow;NewTab;
+
+[Desktop Action NewWindow]
+Name=New Window
+Exec=galaxy-terminal --new-window
+
+[Desktop Action NewTab]
+Name=New Tab
+Exec=galaxy-terminal --new-tab
+
