@@ -95,7 +95,7 @@ static void on_profile_selected(GtkComboBox *combo, gpointer user_data)
     GalaxyProfile *profile = selected_profile(p);
     if (!profile) return;
     p->loading = TRUE;
-    gtk_font_button_set_font_name(GTK_FONT_BUTTON(p->font), profile->font);
+    gtk_font_chooser_set_font(GTK_FONT_CHOOSER(p->font), profile->font);
     gtk_entry_set_text(GTK_ENTRY(p->shell), profile->shell);
     gtk_entry_set_text(GTK_ENTRY(p->cwd), profile->cwd);
     const char *names[] = {"System", "Dark", "Light", "Custom"};
@@ -181,7 +181,7 @@ static void on_font_changed(GtkFontButton *button, gpointer user_data)
     GalaxyProfile *profile = selected_profile(p);
     if (!profile) return;
     g_free(profile->font);
-    profile->font = g_strdup(gtk_font_button_get_font_name(button));
+    profile->font = gtk_font_chooser_get_font(GTK_FONT_CHOOSER(button));
     save(p);
 }
 
@@ -426,7 +426,7 @@ static gboolean on_shortcut_key(GtkWidget *widget, GdkEventKey *event, gpointer 
         return TRUE;
     }
     for (int i = 0; i < ACT_COUNT; ++i) {
-        if (i == capture->action) continue;
+        if (i == (int)capture->action) continue;
         guint key;
         GdkModifierType existing;
         gtk_accelerator_parse(capture->preferences->app->settings->shortcuts[i], &key, &existing);

@@ -110,7 +110,7 @@ static void update_title(GalaxyTab *tab)
         title = basename;
     }
     g_autofree char *short_title = g_utf8_substring(title, 0,
-                                                    MIN(g_utf8_strlen(title, -1), 35));
+                                                    MIN(g_utf8_strlen(title, -1), 35L));
     gtk_label_set_text(GTK_LABEL(tab->label), short_title);
     GalaxyTab *active = galaxy_current_tab(tab->owner);
     if (active == tab) gtk_window_set_title(GTK_WINDOW(tab->owner->window), short_title);
@@ -479,7 +479,7 @@ GalaxyTab *galaxy_tab_new(GalaxyWindow *win, const char *profile_name,
                                               VTE_REGEX_FLAGS_DEFAULT, &regex_error);
     if (links) {
         int tag = vte_terminal_match_add_regex(tab->terminal, links, 0);
-        vte_terminal_match_set_cursor_type(tab->terminal, tag, GDK_HAND2);
+        vte_terminal_match_set_cursor_name(tab->terminal, tag, "pointer");
         vte_regex_unref(links);
     }
 
