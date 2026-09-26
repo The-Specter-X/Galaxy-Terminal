@@ -16,8 +16,17 @@ static void on_startup(GApplication *application, gpointer data)
     (void)application;
     GalaxyApp *app = data;
     galaxy_install_css();
-    app->dark_mode_manager = G_OBJECT(xapp_dark_mode_manager_new(FALSE));
-    app->theme_handler = g_signal_connect(gtk_settings_get_default(),
+    GtkSettings *settings = gtk_settings_get_default();
+    GObject *manager = g_object_get_data(G_OBJECT(settings), "galaxy-dark-mode-manager");
+    if (!manager) {
+        /* XApp's portal startup callback does not retain its manager. Match the
+         * manager's lifetime to process-wide GTK settings so closing the last
+         * application window cannot free it while that callback is pending. */
+        manager = G_OBJECT(xapp_dark_mode_manager_new(FALSE));
+        g_object_set_data_full(G_OBJECT(settings), "galaxy-dark-mode-manager", manager, g_object_unref);
+    }
+    app->dark_mode_manager = g_object_ref(manager);
+    app->theme_handler = g_signal_connect(settings,
         "notify::gtk-application-prefer-dark-theme", G_CALLBACK(on_theme_changed), app);
 }
 

@@ -151,7 +151,15 @@ static void test_dialog_lifetime(void)
     g_assert_nonnull(dialog);
     gtk_dialog_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
     g_assert_false(win->close_requested);
+    /* A popup item can retain a reference after its owner has been destroyed. */
+    GtkWidget *profile_menu = GTK_WIDGET(gtk_menu_button_get_popup(GTK_MENU_BUTTON(win->profiles_menu)));
+    GList *items = gtk_container_get_children(GTK_CONTAINER(profile_menu));
+    g_assert_nonnull(items);
+    GtkWidget *retained_item = g_object_ref(items->data);
+    g_list_free(items);
     gtk_widget_destroy(win->window);
+    g_signal_emit_by_name(retained_item, "activate");
+    g_object_unref(retained_item);
     /* Closing a tab before spawn completion exercises the weak-reference path. */
     win = galaxy_window_new(&app);
     tab = sleeper(win, "Pending");

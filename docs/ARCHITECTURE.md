@@ -14,6 +14,8 @@ Galaxy is a C11/GTK3 application. GTK and VTE own rendering, accessibility, Unic
 
 `GalaxyApp` owns settings and the startup environment. Window/tab records are attached to their owning GtkWindow/page with `g_object_set_data_full`; destroy handlers cancel activity before finalization frees records. Child-exit callbacks disconnect when a tab is destroyed. Spawn completion keeps a weak reference to the page, because VTE can complete after widget destruction. Dialog callbacks are connected to their owning widget, with parent/tab destruction dismissing dependent dialogs. No nested `gtk_dialog_run` loops hold tab pointers across a child exit.
 
+The XApp dark-mode manager is shared through process-wide `GtkSettings`. Its asynchronous portal callback does not retain the manager, so tying it to an individual application teardown would allow a pending callback to access freed memory. Galaxy disconnects its own theme handler at teardown while the shared manager remains valid.
+
 GTK accelerator groups handle translated keys and modifiers. The application does not implement a second terminal keyboard protocol. VTE handles mouse-reporting arbitration before opening the application context menu. tmux receives its regular terminal input when no explicit Galaxy shortcut consumes it.
 
 UI work stays on the main context. VTE launches children asynchronously and manages its own I/O. Settings writes are debounced to avoid a filesystem write per slider movement. Per-tab appearance/behavior signatures avoid resetting unchanged properties when another profile or a general setting changes. File writes themselves are small synchronous durable writes; a future async writer would need ordered snapshots and a shutdown drain, not uncoordinated worker writes.

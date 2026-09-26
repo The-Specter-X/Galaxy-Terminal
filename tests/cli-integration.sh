@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 terminal=$(realpath "${1:-build/galaxy-terminal}")
 tmp=$(mktemp -d)
 server=''
@@ -8,6 +8,19 @@ cleanup() {
     rm -rf "$tmp"
 }
 trap cleanup EXIT
+report_error() {
+    local status=$?
+    echo "CLI regression failed at line $1 (status $status)" >&2
+    for file in ready help version env cwd error server.log; do
+        if [[ -f "$tmp/$file" ]]; then
+            echo "CLI diagnostic: $file" >&2
+            cat "$tmp/$file" >&2
+            echo >&2
+        fi
+    done
+    return "$status"
+}
+trap 'report_error "$LINENO"' ERR
 wait_file() {
     for attempt in {1..100}; do
         if [[ -s "$1" ]]; then return; fi

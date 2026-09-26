@@ -217,22 +217,25 @@ void galaxy_window_install_shortcuts(GalaxyWindow *win)
     gtk_window_add_accel_group(GTK_WINDOW(win->window), win->accelerators);
 }
 
-static void action_clicked(GtkWidget *widget, gpointer data)
+static void action_clicked(GtkWidget *widget, GtkWidget *window)
 {
-    galaxy_window_action(data, GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "action")));
+    GalaxyWindow *win = g_object_get_data(G_OBJECT(window), "galaxy-window");
+    if (win && !win->closing)
+        galaxy_window_action(win, GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "action")));
 }
 static GtkWidget *action_button(GalaxyWindow *win, const char *icon, GalaxyAction action)
 {
     GtkWidget *button = gtk_button_new_from_icon_name(icon, GTK_ICON_SIZE_BUTTON);
     gtk_widget_set_tooltip_text(button, _(galaxy_shortcuts[action].label));
     g_object_set_data(G_OBJECT(button), "action", GINT_TO_POINTER(action));
-    g_signal_connect(button, "clicked", G_CALLBACK(action_clicked), win);
+    g_signal_connect_object(button, "clicked", G_CALLBACK(action_clicked), win->window, 0);
     return button;
 }
 
-static void profile_selected(GtkMenuItem *item, gpointer data)
+static void profile_selected(GtkMenuItem *item, GtkWidget *window)
 {
-    GalaxyWindow *win = data;
+    GalaxyWindow *win = g_object_get_data(G_OBJECT(window), "galaxy-window");
+    if (!win || win->closing) return;
     GalaxyTab *tab = galaxy_current_tab(win);
     const char *name = g_object_get_data(G_OBJECT(item), "profile");
     if (tab) {
@@ -248,7 +251,7 @@ static void profiles_rebuild(GalaxyWindow *win)
         GalaxyProfile *profile = s->profiles->pdata[i];
         GtkWidget *item = gtk_menu_item_new_with_label(profile->name);
         g_object_set_data_full(G_OBJECT(item), "profile", g_strdup(profile->name), g_free);
-        g_signal_connect(item, "activate", G_CALLBACK(profile_selected), win);
+        g_signal_connect_object(item, "activate", G_CALLBACK(profile_selected), win->window, 0);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
     }
     gtk_widget_show_all(menu);
@@ -319,16 +322,19 @@ static void window_free(gpointer data)
     g_clear_object(&win->accelerators);
     g_free(win);
 }
-static void rename_clicked(GtkMenuItem *item, gpointer data)
+static void rename_clicked(GtkMenuItem *item, GtkWidget *window)
 {
     (void)item;
-    GalaxyTab *tab = galaxy_current_tab(data);
+    GalaxyWindow *win = g_object_get_data(G_OBJECT(window), "galaxy-window");
+    if (!win || win->closing) return;
+    GalaxyTab *tab = galaxy_current_tab(win);
     if (tab) galaxy_tab_rename(tab);
 }
-static void about_clicked(GtkMenuItem *item, gpointer data)
+static void about_clicked(GtkMenuItem *item, GtkWidget *window)
 {
     (void)item;
-    GalaxyWindow *win = data;
+    GalaxyWindow *win = g_object_get_data(G_OBJECT(window), "galaxy-window");
+    if (!win || win->closing) return;
     gtk_show_about_dialog(GTK_WINDOW(win->window), "program-name", "Galaxy Terminal",
         "version", GALAXY_VERSION, "license-type", GTK_LICENSE_MIT_X11,
         "website", "https://github.com/The-Specter-X/Galaxy-Terminal",
@@ -366,14 +372,14 @@ GalaxyWindow *galaxy_window_new(GalaxyApp *app)
     for (guint i = 0; i < G_N_ELEMENTS(actions); i++) {
         GtkWidget *item = gtk_menu_item_new_with_label(_(galaxy_shortcuts[actions[i]].label));
         g_object_set_data(G_OBJECT(item), "action", GINT_TO_POINTER(actions[i]));
-        g_signal_connect(item, "activate", G_CALLBACK(action_clicked), win);
+        g_signal_connect_object(item, "activate", G_CALLBACK(action_clicked), win->window, 0);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
     }
     GtkWidget *rename = gtk_menu_item_new_with_label(_("Rename tab…"));
-    g_signal_connect(rename, "activate", G_CALLBACK(rename_clicked), win);
+    g_signal_connect_object(rename, "activate", G_CALLBACK(rename_clicked), win->window, 0);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), rename);
     GtkWidget *about = gtk_menu_item_new_with_label(_("About Galaxy Terminal"));
-    g_signal_connect(about, "activate", G_CALLBACK(about_clicked), win);
+    g_signal_connect_object(about, "activate", G_CALLBACK(about_clicked), win->window, 0);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), about);
     gtk_widget_show_all(menu);
     gtk_menu_button_set_popup(GTK_MENU_BUTTON(menu_button), menu);
