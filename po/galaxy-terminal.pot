@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: galaxy-terminal 0.2.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 08:40+0200\n"
+"POT-Creation-Date: 2026-09-26 08:45+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -47,7 +47,7 @@ msgstr ""
 msgid "DIR"
 msgstr ""
 
-#: src/commands.c:91 src/preferences.c:333
+#: src/commands.c:91 src/preferences.c:344
 msgid "Profile name"
 msgstr ""
 
@@ -55,7 +55,7 @@ msgstr ""
 msgid "NAME"
 msgstr ""
 
-#: src/commands.c:92 src/session.c:179
+#: src/commands.c:92 src/session.c:181
 msgid "Tab title"
 msgstr ""
 
@@ -137,35 +137,45 @@ msgstr ""
 msgid "Close search"
 msgstr ""
 
-#: src/session.c:157
+#: src/session.c:159
 msgid "Close this tab and its running process?"
 msgstr ""
 
-#: src/session.c:158 src/session.c:299 src/shortcuts.c:9
+#: src/session.c:160 src/session.c:336 src/shortcuts.c:9
 msgid "Close tab"
 msgstr ""
 
-#: src/session.c:180 src/preferences.c:334 src/preferences.c:460
+#: src/session.c:182 src/preferences.c:345 src/preferences.c:471
 msgid "Cancel"
 msgstr ""
 
-#: src/session.c:181 src/preferences.c:335
+#: src/session.c:183 src/preferences.c:346
 msgid "Apply"
 msgstr ""
 
-#: src/session.c:184
+#: src/session.c:186
 msgid "Empty uses the shell title"
 msgstr ""
 
-#: src/session.c:216
+#: src/session.c:218
 #, c-format
-msgid ""
-"\r\n"
-"Could not start the terminal: %s\r\n"
-"Check the profile in Preferences.\r\n"
+msgid "Could not start the terminal: %s"
 msgstr ""
 
-#: src/session.c:294
+#: src/session.c:219
+msgid "Check the profile in Preferences."
+msgstr ""
+
+#: src/session.c:248
+#, c-format
+msgid "Could not open link: %s"
+msgstr ""
+
+#: src/session.c:290
+msgid "Select all"
+msgstr ""
+
+#: src/session.c:331
 msgid "Terminal"
 msgstr ""
 
@@ -177,7 +187,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: src/preferences.c:43 src/preferences.c:250
+#: src/preferences.c:43 src/preferences.c:261
 msgid "Follow desktop"
 msgstr ""
 
@@ -189,147 +199,151 @@ msgstr ""
 msgid "Disabled"
 msgstr ""
 
-#: src/preferences.c:249
+#: src/preferences.c:204
+msgid "Choose a font size no larger than 256."
+msgstr ""
+
+#: src/preferences.c:260
 msgid "Block"
 msgstr ""
 
-#: src/preferences.c:249
+#: src/preferences.c:260
 msgid "I-beam"
 msgstr ""
 
-#: src/preferences.c:249
+#: src/preferences.c:260
 msgid "Underline"
 msgstr ""
 
-#: src/preferences.c:250
+#: src/preferences.c:261
 msgid "On"
 msgstr ""
 
-#: src/preferences.c:250
+#: src/preferences.c:261
 msgid "Off"
 msgstr ""
 
-#: src/preferences.c:261
+#: src/preferences.c:272
 msgid "Restore this setting’s default"
 msgstr ""
 
-#: src/preferences.c:280
+#: src/preferences.c:291
 msgid "Settings apply immediately. Changes are saved after a short pause."
 msgstr ""
 
-#: src/preferences.c:283
+#: src/preferences.c:294
 msgid "Retry saving settings"
 msgstr ""
 
-#: src/preferences.c:287
+#: src/preferences.c:298
 msgid ""
 "Search covers retained terminal output, not the shell history file. "
 "Unlimited scrollback can consume disk space and memory."
 msgstr ""
 
-#: src/preferences.c:288
+#: src/preferences.c:299
 msgid ""
 "Application appearance follows the desktop. Terminal colors are configured "
 "per profile."
 msgstr ""
 
-#: src/preferences.c:289
+#: src/preferences.c:300
 msgid "Restore general defaults"
 msgstr ""
 
-#: src/preferences.c:309
+#: src/preferences.c:320
 msgid ""
 "Use a unique name of at most 100 bytes, without brackets or line breaks. The "
 "source profile must still exist."
 msgstr ""
 
-#: src/preferences.c:383
+#: src/preferences.c:394
 msgid "Add"
 msgstr ""
 
-#: src/preferences.c:383
+#: src/preferences.c:394
 msgid "Rename"
 msgstr ""
 
-#: src/preferences.c:383
+#: src/preferences.c:394
 msgid "Duplicate"
 msgstr ""
 
-#: src/preferences.c:390
+#: src/preferences.c:401
 msgid "Remove"
 msgstr ""
 
-#: src/preferences.c:391
+#: src/preferences.c:402
 msgid "Make default"
 msgstr ""
 
-#: src/preferences.c:394
+#: src/preferences.c:405
 msgid ""
 "Removing a profile moves its open tabs to the default profile. Shell and "
 "directory changes affect future launches."
 msgstr ""
 
-#: src/preferences.c:403
+#: src/preferences.c:414
 msgid ""
 "Custom colors apply when the Custom palette is selected. Opacity changes "
 "only the terminal background; blur is controlled by the compositor."
 msgstr ""
 
-#: src/preferences.c:407
+#: src/preferences.c:418
 #, c-format
 msgid "Custom ANSI color %d"
 msgstr ""
 
-#: src/preferences.c:418
+#: src/preferences.c:429
 msgid "Restore this profile’s defaults"
 msgstr ""
 
-#: src/preferences.c:447
+#: src/preferences.c:458
 msgid "Use an unassigned Ctrl, Alt, Super or function-key shortcut."
 msgstr ""
 
-#: src/preferences.c:459
+#: src/preferences.c:470
 msgid "Set shortcut"
 msgstr ""
 
-#: src/preferences.c:462
+#: src/preferences.c:473
 msgid "Press a shortcut. Backspace disables it; Escape cancels."
 msgstr ""
 
-#: src/preferences.c:477
+#: src/preferences.c:488
 msgid ""
 "The default shortcut is assigned elsewhere. Clear that assignment or restore "
 "all shortcut defaults."
 msgstr ""
 
-#: src/preferences.c:494
+#: src/preferences.c:505
 msgid ""
 "Ctrl + uses the plus key, including Shift when your keyboard layout needs "
 "it. Ctrl+Left/Right can be assigned here, but normally belong to shell word "
 "navigation."
 msgstr ""
 
-#: src/preferences.c:502
+#: src/preferences.c:513
 msgid "Restore this shortcut’s default"
 msgstr ""
 
-#: src/preferences.c:508
+#: src/preferences.c:519
 msgid "Restore all shortcut defaults"
 msgstr ""
 
-#: src/preferences.c:531
+#: src/preferences.c:542
 msgid "Galaxy Terminal Preferences"
 msgstr ""
 
-#: src/preferences.c:536
+#: src/preferences.c:547
 msgid "General"
 msgstr ""
 
-#: src/preferences.c:537
+#: src/preferences.c:548
 msgid "Profiles"
 msgstr ""
 
-#: src/preferences.c:538
+#: src/preferences.c:549
 msgid "Shortcuts"
 msgstr ""
 
@@ -346,17 +360,17 @@ msgstr ""
 msgid "Configuration could not be loaded; keeping valid settings: %s"
 msgstr ""
 
-#: src/settings.c:321
+#: src/settings.c:327
 #, c-format
 msgid "Invalid values were replaced with safe defaults: %s"
 msgstr ""
 
-#: src/settings.c:375
+#: src/settings.c:381
 #, c-format
 msgid "Settings could not be saved: %s"
 msgstr ""
 
-#: src/settings.c:453
+#: src/settings.c:459
 msgid "The settings directory could not be created."
 msgstr ""
 

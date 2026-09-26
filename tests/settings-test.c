@@ -79,7 +79,7 @@ static void test_malformed(void)
 static void test_invalid_values(void)
 {
     write_config("[General]\nScrollbackLines=bad\nConfirmClose=perhaps\nAlwaysShowTabs=bad\n"
-        "[Profile Default]\nOpacity=nan\nCursorShape=999\nForeground=notacolor\nPalette=bogus\n"
+        "[Profile Default]\nOpacity=nan\nFont=Monospace 999\nCursorShape=999\nForeground=notacolor\nPalette=bogus\n"
         "[Shortcuts]\nNewTab=<Control><Shift>T\nNewWindow=<Control><Shift>t\nCopy=unassignedGarbage\n");
     GalaxySettings *s = galaxy_settings_new();
     GalaxyProfile *p = galaxy_settings_profile(s, "Default");
@@ -87,6 +87,7 @@ static void test_invalid_values(void)
     g_assert_true(s->confirm_close); g_assert_false(s->show_tabs);
     g_assert_cmpfloat(p->opacity, ==, 1.0);
     g_assert_cmpint(p->cursor_shape, ==, 0);
+    g_assert_cmpstr(p->font, ==, "Monospace 11");
     g_assert_cmpstr(p->palette, ==, "Dark");
     g_assert_cmpstr(p->foreground, ==, "#ebedf4");
     g_assert_cmpstr(s->shortcuts[ACT_NEW_WINDOW], ==, "");

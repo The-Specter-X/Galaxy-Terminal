@@ -46,6 +46,24 @@ static GtkWidget *dialog_named(const char *title)
     g_list_free(windows);
     return found;
 }
+static gboolean activate_physical(GalaxyWindow *win, guint symbol, GdkModifierType state)
+{
+    GdkKeymap *map = gdk_keymap_get_for_display(gtk_widget_get_display(win->window));
+    GdkKeymapKey *entries = NULL;
+    int count = 0;
+    g_assert_true(gdk_keymap_get_entries_for_keyval(map, symbol, &entries, &count));
+    g_assert_cmpint(count, >, 0);
+    GdkEventKey event = {0};
+    event.type = GDK_KEY_PRESS;
+    event.window = gtk_widget_get_window(win->window);
+    event.hardware_keycode = entries[0].keycode;
+    event.group = entries[0].group;
+    event.state = state;
+    event.keyval = symbol;
+    g_free(entries);
+    return gtk_window_activate_key(GTK_WINDOW(win->window), &event);
+}
+
 static void test_tabs_search_shortcuts(void)
 {
     GalaxyWindow *win = galaxy_window_new(&app);
@@ -54,6 +72,12 @@ static void test_tabs_search_shortcuts(void)
     wait_spawn(a);
     g_assert_false(gtk_notebook_get_show_tabs(GTK_NOTEBOOK(win->notebook)));
     b = sleeper(win, "Second"); wait_spawn(b);
+    g_assert_true(activate_physical(win, GDK_KEY_T, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+    g_assert_cmpint(gtk_notebook_get_n_pages(GTK_NOTEBOOK(win->notebook)), ==, 3);
+    galaxy_tab_destroy(galaxy_current_tab(win));
+    g_assert_true(activate_physical(win, GDK_KEY_plus, GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+    g_assert_cmpfloat(b->font_scale, >, 1.0);
+    galaxy_window_action(win, ACT_ZOOM_RESET);
     g_assert_true(gtk_notebook_get_show_tabs(GTK_NOTEBOOK(win->notebook)));
     gtk_notebook_set_current_page(GTK_NOTEBOOK(win->notebook), 0);
     g_assert_true(galaxy_current_tab(win) == a);
@@ -88,8 +112,15 @@ static void test_dialog_lifetime(void)
     galaxy_tab_request_close(tab);
     galaxy_tab_rename(tab);
     g_assert_nonnull(dialog_named("Tab title"));
-    gboolean popup = FALSE;
-    g_signal_emit_by_name(tab->terminal, "popup-menu", &popup);
+    GdkEvent *event = gdk_event_new(GDK_BUTTON_PRESS);
+    event->button.window = g_object_ref(gtk_widget_get_window(GTK_WIDGET(tab->terminal)));
+    event->button.send_event = TRUE;
+    event->button.time = GDK_CURRENT_TIME;
+    event->button.button = 3;
+    event->button.x = 20; event->button.y = 20;
+    gdk_event_set_device(event, gdk_seat_get_pointer(gdk_display_get_default_seat(gdk_display_get_default())));
+    gtk_main_do_event(event);
+    gdk_event_free(event);
     g_assert_nonnull(vte_terminal_get_context_menu(tab->terminal));
     GPid child = tab->pid;
     kill(child, SIGTERM);
@@ -163,6 +194,38 @@ static void test_preferences(void)
     gtk_widget_destroy(prefs); g_assert_null(app.preferences);
     gtk_widget_destroy(win->window); spin(30);
 }
+static void test_opacity(void)
+{
+    GalaxyWindow *win = galaxy_window_new(&app);
+    GalaxyTab *tab = sleeper(win, "Opacity"); wait_spawn(tab);
+    GalaxyProfile *profile = galaxy_settings_profile(app.settings, "Default");
+    profile->opacity = 0.5;
+    galaxy_settings_changed(app.settings, GALAXY_CHANGE_COLORS);
+    spin(200);
+    int width = gtk_widget_get_allocated_width(win->window);
+    int height = gtk_widget_get_allocated_height(win->window);
+    cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+    cairo_t *cr = cairo_create(surface);
+    gtk_widget_draw(win->window, cr);
+    cairo_destroy(cr); cairo_surface_flush(surface);
+    int x = 0, y = 0;
+    g_assert_true(gtk_widget_translate_coordinates(GTK_WIDGET(tab->terminal), win->window,
+        gtk_widget_get_allocated_width(GTK_WIDGET(tab->terminal)) - 12,
+        gtk_widget_get_allocated_height(GTK_WIDGET(tab->terminal)) - 12, &x, &y));
+    g_assert_cmpint(x, >=, 0); g_assert_cmpint(x, <, width);
+    g_assert_cmpint(y, >=, 0); g_assert_cmpint(y, <, height);
+    guint32 *pixels = (guint32 *)(cairo_image_surface_get_data(surface) +
+                                y * cairo_image_surface_get_stride(surface));
+    guint alpha = pixels[x] >> 24;
+    g_test_message("Terminal background alpha: %u (expected approximately 128)", alpha);
+    cairo_surface_write_to_png(surface, "build/meson-logs/opacity-preview.png");
+    cairo_surface_destroy(surface);
+    g_assert_cmpuint(alpha, >, 110); g_assert_cmpuint(alpha, <, 145);
+    profile->opacity = 1.0;
+    galaxy_settings_changed(app.settings, GALAXY_CHANGE_COLORS);
+    gtk_widget_destroy(win->window); spin(30);
+}
+
 static void test_uri_and_arguments(void)
 {
     g_autofree char *local = galaxy_local_directory_uri("file://localhost/tmp");
@@ -190,6 +253,7 @@ int main(int argc, char **argv)
     g_test_add_func("/ui/dialog-lifetime", test_dialog_lifetime);
     g_test_add_func("/ui/preferences-reload", test_preferences);
     g_test_add_func("/ui/local-uri-arguments", test_uri_and_arguments);
+    g_test_add_func("/ui/opacity-backing", test_opacity);
     int result = g_test_run();
     galaxy_app_clear(&app); spin(50);
     return result;

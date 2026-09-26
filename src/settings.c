@@ -278,6 +278,12 @@ static gboolean parse_model(GalaxySettings *s, const char *text, gsize length)
         string_field(key, groups[i], "Shell", &p->shell, TRUE, warnings);
         string_field(key, groups[i], "WorkingDirectory", &p->cwd, TRUE, warnings);
         string_field(key, groups[i], "Font", &p->font, FALSE, warnings);
+        g_autoptr(PangoFontDescription) font = pango_font_description_from_string(p->font);
+        int size = pango_font_description_get_size(font);
+        if (size < 0 || size > 256 * PANGO_SCALE || !pango_font_description_get_family(font)) {
+            invalid(warnings, groups[i], "Font");
+            g_free(p->font); p->font = g_strdup("Monospace 11");
+        }
         string_field(key, groups[i], "Palette", &p->palette, FALSE, warnings);
         if (g_strcmp0(p->palette, "Dark") && g_strcmp0(p->palette, "Light") &&
             g_strcmp0(p->palette, "System") && g_strcmp0(p->palette, "Custom")) {

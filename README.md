@@ -9,6 +9,7 @@ A C terminal for Wayland, built with **GTK 3, XApp and VTE**. The target platfor
 - An XApp preferences window with per-setting reset buttons, editable shortcuts, validation messages and save-error reporting. Configuration edits outside the application reload into both open tabs and preferences.
 - **10,000 lines of scrollback per tab by default**, with configurable limits or unlimited retention. Search the current tab’s retained output with Ctrl+Shift+F, case matching, next/previous navigation and no-match feedback.
 - Mouse selection, clipboard copy/paste, optional copy-on-selection, scroll wheel and tmux/application mouse reporting. Hold Shift to use terminal selection/context-menu behavior while a program captures the mouse.
+- Ctrl-click opens HTTP(S) links and supported OSC 8 web/mail links; Select all is available in the context menu.
 - Unicode and font fallback through VTE/Pango, including emoji where your installed fonts support them. Sixel is disabled; Galaxy adds no Kitty image protocol or image-helper integration.
 - Asynchronous shell startup, safe process-close confirmations and local `--help`/`--version` handling, including while another instance is running.
 

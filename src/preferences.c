@@ -196,7 +196,18 @@ static void field_changed(GtkWidget *widget, gpointer data)
         gtk_label_set_text(GTK_LABEL(p->validation), "");
         break;
     }
-    case FIELD_FONT: value = gtk_font_chooser_get_font(GTK_FONT_CHOOSER(widget)); break;
+    case FIELD_FONT: {
+        value = gtk_font_chooser_get_font(GTK_FONT_CHOOSER(widget));
+        g_autoptr(PangoFontDescription) font = pango_font_description_from_string(value);
+        int size = pango_font_description_get_size(font);
+        if (size < 0 || size > 256 * PANGO_SCALE) {
+            gtk_label_set_text(GTK_LABEL(p->validation), _("Choose a font size no larger than 256."));
+            g_free(value);
+            return;
+        }
+        gtk_label_set_text(GTK_LABEL(p->validation), "");
+        break;
+    }
     case FIELD_COLOR: {
         GdkRGBA color; gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(widget), &color);
         value = gdk_rgba_to_string(&color); break;

@@ -2,6 +2,8 @@
 #include <glib/gi18n.h>
 #include <unistd.h>
 #include <string.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 
 static GalaxyTab *page_tab(GtkWidget *page)
 {
@@ -213,7 +215,8 @@ static void spawned(VteTerminal *terminal, GPid pid, GError *error, gpointer dat
     if (!tab || tab->closing) return;
     g_clear_object(&tab->spawn_cancel);
     if (error) {
-        g_autofree char *message = g_strdup_printf(_("\r\nCould not start the terminal: %s\r\nCheck the profile in Preferences.\r\n"), error->message);
+        g_autofree char *problem = g_strdup_printf(_("Could not start the terminal: %s"), error->message);
+        g_autofree char *message = g_strdup_printf("\r\n%s\r\n%s\r\n", problem, _("Check the profile in Preferences."));
         vte_terminal_feed(terminal, message, -1);
     } else tab->pid = pid;
 }
@@ -231,6 +234,24 @@ static gboolean copy_selection(gpointer data)
 static gboolean button_released(GtkWidget *widget, GdkEventButton *event, gpointer data)
 {
     (void)data;
+    GalaxyTab *tab = g_object_get_data(G_OBJECT(widget), "galaxy-tab");
+    if (!tab || tab->closing) return FALSE;
+    if (event->button == 1 && (event->state & GDK_CONTROL_MASK)) {
+        g_autofree char *uri = vte_terminal_hyperlink_check_event(tab->terminal, (GdkEvent *)event);
+        if (!uri) uri = vte_terminal_match_check_event(tab->terminal, (GdkEvent *)event, NULL);
+        if (uri && (g_str_has_prefix(uri, "https://") || g_str_has_prefix(uri, "http://") ||
+                    g_str_has_prefix(uri, "mailto:"))) {
+            g_autoptr(GError) error = NULL;
+            if (!gtk_show_uri_on_window(GTK_WINDOW(tab->owner->window), uri, event->time, &error)) {
+                GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(tab->owner->window),
+                    GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE,
+                    _("Could not open link: %s"), error->message);
+                g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
+                gtk_widget_show(dialog);
+            }
+            return TRUE;
+        }
+    }
     if (event->button == 1)
         g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, copy_selection, g_object_ref(widget), g_object_unref);
     return FALSE;
@@ -244,6 +265,12 @@ static void menu_action(GtkMenuItem *item, VteTerminal *terminal)
     if (action == ACT_COPY) vte_terminal_copy_clipboard_format(terminal, VTE_FORMAT_TEXT);
     else if (action == ACT_PASTE) vte_terminal_paste_clipboard(terminal);
     else galaxy_window_action(tab->owner, action);
+}
+
+static void select_all(GtkMenuItem *item, VteTerminal *terminal)
+{
+    (void)item;
+    if (g_object_get_data(G_OBJECT(terminal), "galaxy-tab")) vte_terminal_select_all(terminal);
 }
 
 static void setup_menu(VteTerminal *terminal, const VteEventContext *context, gpointer data)
@@ -260,6 +287,9 @@ static void setup_menu(VteTerminal *terminal, const VteEventContext *context, gp
         g_signal_connect_object(item, "activate", G_CALLBACK(menu_action), terminal, 0);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
     }
+    GtkWidget *select = gtk_menu_item_new_with_label(_("Select all"));
+    g_signal_connect_object(select, "activate", G_CALLBACK(select_all), terminal, 0);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), select);
     gtk_widget_show_all(menu);
     vte_terminal_set_context_menu(terminal, menu);
 }
@@ -290,6 +320,13 @@ GalaxyTab *galaxy_tab_new(GalaxyWindow *win, const char *profile_name,
     gtk_box_pack_start(GTK_BOX(tab->page), tab->scrolled, TRUE, TRUE, 0);
     vte_terminal_set_allow_hyperlink(tab->terminal, TRUE);
     vte_terminal_set_enable_sixel(tab->terminal, FALSE);
+    VteRegex *links = vte_regex_new_for_match("https?://[^[:space:]<>\"']+", -1,
+                                              PCRE2_MULTILINE | PCRE2_UTF | PCRE2_UCP, NULL);
+    if (links) {
+        int tag = vte_terminal_match_add_regex(tab->terminal, links, 0);
+        vte_terminal_match_set_cursor_name(tab->terminal, tag, "pointer");
+        vte_regex_unref(links);
+    }
     GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     tab->label = gtk_label_new(_("Terminal"));
     gtk_label_set_ellipsize(GTK_LABEL(tab->label), PANGO_ELLIPSIZE_END);

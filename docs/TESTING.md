@@ -15,7 +15,8 @@ Despite its historical name, `wayland-smoke.sh` runs the interactive regression 
 Automated coverage:
 
 - Defaults, serialization, profile copy/rename/remove, malformed startup/reload, invalid typed settings, duplicate shortcuts, failed saves and debounce/external-edit precedence.
-- Tab switching, window titles, reordering, tab-bar visibility, zoom, search matching and per-tab search selection.
+- Tab switching, window titles, reordering, tab-bar visibility, physical Shift-modified shortcuts, zoom, search matching and per-tab search selection.
+- A rendered alpha sample verifies 50% terminal background opacity; a preview PNG is kept with CI logs.
 - Child exit with close/rename/context-menu UI open, close cancellation and destruction before asynchronous spawn finishes.
 - Preferences name validation, duplication/removal, external reload synchronization, reset controls, shortcut capture and parent destruction.
 - CLI help/version while another instance runs, `-e` argument preservation, relative working directory, caller environment isolation and invalid requests.
