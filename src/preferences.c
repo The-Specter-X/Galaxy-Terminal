@@ -1,564 +1,545 @@
 #include "app.h"
-
+#include <glib/gi18n.h>
 #include <libxapp/xapp-preferences-window.h>
-#include <gdk/gdkkeysyms.h>
+#include <stddef.h>
 
-typedef struct {
+typedef enum { FIELD_BOOL, FIELD_INT, FIELD_TEXT, FIELD_FONT, FIELD_COLOR,
+               FIELD_OPACITY, FIELD_PALETTE, FIELD_SHAPE, FIELD_BLINK } FieldType;
+typedef struct { const char *label; FieldType type; size_t offset; const char *initial; } Field;
+typedef struct _Preferences Preferences;
+typedef struct { Preferences *prefs; const Field *field; GtkWidget *widget; gboolean profile; } Binding;
+struct _Preferences {
     GalaxyApp *app;
-    GtkWidget *window;
-    GtkWidget *profile_combo;
-    GtkWidget *font;
-    GtkWidget *palette;
-    GtkWidget *foreground;
-    GtkWidget *background;
-    GtkWidget *opacity;
-    GtkWidget *shell;
-    GtkWidget *cwd;
-    GtkWidget *ansi_grid;
-    GtkWidget *ansi[16];
-    GtkWidget *default_button;
-    GtkWidget *remove_button;
-    gboolean loading;
-} Preferences;
+    GtkWidget *window, *profile_combo, *error, *validation, *preview;
+    GtkWidget *remove_button, *default_button, *shortcuts[ACT_COUNT];
+    GPtrArray *bindings;
+    gboolean loading, editing;
+};
+#define GENERAL(label, type, member, initial) {N_(label), type, offsetof(GalaxySettings, member), initial}
+#define PROFILE(label, type, member, initial) {N_(label), type, offsetof(GalaxyProfile, member), initial}
+static const Field general_fields[] = {
+    GENERAL("Always show the tab bar", FIELD_BOOL, show_tabs, "0"),
+    GENERAL("Copy mouse selection to clipboard", FIELD_BOOL, auto_copy, "0"),
+    GENERAL("Confirm closing a running command", FIELD_BOOL, confirm_close, "1"),
+    GENERAL("Show scrollbar", FIELD_BOOL, show_scrollbar, "1"),
+    GENERAL("Hide mouse pointer while typing", FIELD_BOOL, mouse_autohide, "0"),
+    GENERAL("Scrollback lines (−1 means unlimited)", FIELD_INT, scrollback, "10000")
+};
+static const Field profile_fields[] = {
+    PROFILE("Font", FIELD_FONT, font, "Monospace 11"),
+    PROFILE("Color palette", FIELD_PALETTE, palette, "Dark"),
+    PROFILE("Custom text color", FIELD_COLOR, foreground, "#ebedf4"),
+    PROFILE("Custom background color", FIELD_COLOR, background, "#191b24"),
+    PROFILE("Background opacity (%)", FIELD_OPACITY, opacity, "1"),
+    PROFILE("Cursor shape", FIELD_SHAPE, cursor_shape, "0"),
+    PROFILE("Cursor blinking", FIELD_BLINK, cursor_blink, "0"),
+    PROFILE("Audible bell", FIELD_BOOL, audible_bell, "0"),
+    PROFILE("Scroll to bottom on output", FIELD_BOOL, scroll_on_output, "0"),
+    PROFILE("Scroll to bottom on typing", FIELD_BOOL, scroll_on_keystroke, "1"),
+    PROFILE("Shell executable (empty uses login shell)", FIELD_TEXT, shell, ""),
+    PROFILE("Starting directory (empty inherits)", FIELD_TEXT, cwd, "")
+};
+static const char *const palette_ids[] = {"Dark", "Light", "System", "Custom"};
+static const char *const palette_labels[] = {N_("Dark"), N_("Light"), N_("Follow desktop"), N_("Custom")};
 
-static GtkWidget *section(void)
+static void margin(GtkWidget *widget, int size)
 {
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
-    gtk_container_set_border_width(GTK_CONTAINER(box), 20);
+    gtk_widget_set_margin_start(widget, size); gtk_widget_set_margin_end(widget, size);
+    gtk_widget_set_margin_top(widget, size); gtk_widget_set_margin_bottom(widget, size);
+}
+static GtkWidget *section(GtkWidget **box)
+{
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER,
-                                   GTK_POLICY_AUTOMATIC);
-    gtk_container_add(GTK_CONTAINER(scroll), box);
-    g_object_set_data(G_OBJECT(scroll), "content", box);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    margin(*box, 20);
+    gtk_container_add(GTK_CONTAINER(scroll), *box);
     return scroll;
 }
-
-static GtkWidget *content(GtkWidget *scroll)
+static GtkWidget *label(GtkWidget *box, const char *text)
 {
-    return g_object_get_data(G_OBJECT(scroll), "content");
+    GtkWidget *widget = gtk_label_new(text);
+    gtk_label_set_line_wrap(GTK_LABEL(widget), TRUE);
+    gtk_label_set_xalign(GTK_LABEL(widget), 0);
+    gtk_box_pack_start(GTK_BOX(box), widget, FALSE, FALSE, 0);
+    return widget;
 }
-
-static GtkWidget *row(GtkWidget *box, const char *label, GtkWidget *control)
+static GtkWidget *row(GtkWidget *box, const char *text, GtkWidget *control)
 {
     GtkWidget *line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    GtkWidget *name = gtk_label_new(label);
+    GtkWidget *name = gtk_label_new(text);
     gtk_label_set_xalign(GTK_LABEL(name), 0);
-    gtk_widget_set_hexpand(name, TRUE);
+    gtk_label_set_line_wrap(GTK_LABEL(name), TRUE);
+    gtk_label_set_mnemonic_widget(GTK_LABEL(name), control);
     gtk_box_pack_start(GTK_BOX(line), name, TRUE, TRUE, 0);
-    gtk_box_pack_end(GTK_BOX(line), control, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(line), control, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), line, FALSE, FALSE, 0);
     return line;
 }
-
-static GtkWidget *heading(GtkWidget *box, const char *title)
+static GalaxyProfile *selected(Preferences *p)
 {
-    GtkWidget *label = gtk_label_new(NULL);
-    g_autofree char *markup = g_markup_printf_escaped("<b>%s</b>", title);
-    gtk_label_set_markup(GTK_LABEL(label), markup);
-    gtk_label_set_xalign(GTK_LABEL(label), 0);
-    gtk_box_pack_start(GTK_BOX(box), label, FALSE, FALSE, 5);
-    return label;
+    return galaxy_settings_profile(p->app->settings,
+        gtk_combo_box_get_active_id(GTK_COMBO_BOX(p->profile_combo)));
 }
-
-static GalaxyProfile *selected_profile(Preferences *p)
+static gpointer field_address(Binding *binding)
 {
-    g_autofree char *name = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(p->profile_combo));
-    return galaxy_settings_profile(p->app->settings, name);
+    gpointer base = binding->profile ? (gpointer)selected(binding->prefs) : (gpointer)binding->prefs->app->settings;
+    return base ? (char *)base + binding->field->offset : NULL;
 }
-
-static void save(Preferences *p)
+static void preview(Preferences *p)
 {
-    if (!p->loading) galaxy_settings_save(p->app->settings);
+    GalaxyProfile *profile = selected(p);
+    if (profile) galaxy_terminal_apply_profile(VTE_TERMINAL(p->preview), profile);
 }
-
-static void profile_populate(Preferences *p, const char *selected)
+static void save(Preferences *p, guint changes)
 {
-    GtkComboBoxText *combo = GTK_COMBO_BOX_TEXT(p->profile_combo);
+    p->editing = TRUE;
+    galaxy_settings_changed(p->app->settings, changes);
+    p->editing = FALSE;
+    preview(p);
+}
+static void populate(Preferences *p, const char *name)
+{
     p->loading = TRUE;
-    gtk_combo_box_text_remove_all(combo);
+    gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(p->profile_combo));
     GalaxySettings *s = p->app->settings;
-    int index = 0;
-    for (guint i = 0; i < s->profiles->len; ++i) {
-        GalaxyProfile *profile = g_ptr_array_index(s->profiles, i);
-        gtk_combo_box_text_append_text(combo, profile->name);
-        if (g_strcmp0(selected, profile->name) == 0) index = i;
+    for (guint i = 0; i < s->profiles->len; i++) {
+        GalaxyProfile *profile = s->profiles->pdata[i];
+        gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(p->profile_combo), profile->name, profile->name);
     }
-    gtk_combo_box_set_active(GTK_COMBO_BOX(combo), index);
+    if (!gtk_combo_box_set_active_id(GTK_COMBO_BOX(p->profile_combo), name))
+        gtk_combo_box_set_active_id(GTK_COMBO_BOX(p->profile_combo), s->default_profile);
     p->loading = FALSE;
 }
-
-static void on_profile_selected(GtkComboBox *combo, gpointer user_data)
+static void binding_refresh(Binding *binding)
 {
-    Preferences *p = user_data;
-    (void)combo;
-    if (p->loading) return;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
+    gpointer address = field_address(binding);
+    if (!address) return;
+    GtkWidget *widget = binding->widget;
+    switch (binding->field->type) {
+    case FIELD_BOOL: gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(widget), *(gboolean *)address); break;
+    case FIELD_INT: gtk_spin_button_set_value(GTK_SPIN_BUTTON(widget), *(int *)address); break;
+    case FIELD_TEXT: gtk_entry_set_text(GTK_ENTRY(widget), *(char **)address); break;
+    case FIELD_FONT: gtk_font_chooser_set_font(GTK_FONT_CHOOSER(widget), *(char **)address); break;
+    case FIELD_COLOR: {
+        GdkRGBA color;
+        if (gdk_rgba_parse(&color, *(char **)address)) gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(widget), &color);
+        break;
+    }
+    case FIELD_OPACITY: gtk_range_set_value(GTK_RANGE(widget), *(double *)address * 100); break;
+    case FIELD_PALETTE: gtk_combo_box_set_active_id(GTK_COMBO_BOX(widget), *(char **)address); break;
+    case FIELD_SHAPE: case FIELD_BLINK: gtk_combo_box_set_active(GTK_COMBO_BOX(widget), *(int *)address); break;
+    }
+}
+static void refresh_controls(Preferences *p)
+{
     p->loading = TRUE;
-    gtk_font_chooser_set_font(GTK_FONT_CHOOSER(p->font), profile->font);
-    gtk_entry_set_text(GTK_ENTRY(p->shell), profile->shell);
-    gtk_entry_set_text(GTK_ENTRY(p->cwd), profile->cwd);
-    const char *names[] = {"System", "Dark", "Light", "Custom"};
-    for (guint i = 0; i < G_N_ELEMENTS(names); ++i)
-        if (g_strcmp0(profile->palette, names[i]) == 0)
-            gtk_combo_box_set_active(GTK_COMBO_BOX(p->palette), i);
-    GdkRGBA color;
-    if (gdk_rgba_parse(&color, profile->foreground))
-        gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(p->foreground), &color);
-    if (gdk_rgba_parse(&color, profile->background))
-        gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(p->background), &color);
-    for (int i = 0; i < 16; ++i)
-        if (gdk_rgba_parse(&color, profile->ansi[i]))
-            gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(p->ansi[i]), &color);
-    gtk_range_set_value(GTK_RANGE(p->opacity), profile->opacity * 100.0);
-    gboolean custom = g_strcmp0(profile->palette, "Custom") == 0;
-    gtk_widget_set_sensitive(p->foreground, custom);
-    gtk_widget_set_sensitive(p->background, custom);
-    gtk_widget_set_sensitive(p->ansi_grid, custom);
-    gtk_widget_set_sensitive(p->remove_button, p->app->settings->profiles->len > 1);
-    gtk_widget_set_sensitive(p->default_button,
-        g_strcmp0(profile->name, p->app->settings->default_profile) != 0);
-    p->loading = FALSE;
-}
-
-static void on_profile_add(GtkButton *button, gpointer user_data)
-{
-    Preferences *p = user_data;
-    (void)button;
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("New profile", GTK_WINDOW(p->window),
-        GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL, "Add", GTK_RESPONSE_ACCEPT, NULL);
-    GtkWidget *entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Profile name");
-    gtk_container_set_border_width(GTK_CONTAINER(entry), 12);
-    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), entry);
-    GtkWidget *error = gtk_label_new("");
-    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), error);
-    gtk_widget_show_all(dialog);
-    gtk_widget_grab_focus(entry);
-    while (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-        g_autofree char *name = g_strstrip(g_strdup(gtk_entry_get_text(GTK_ENTRY(entry))));
-        GalaxyProfile *profile = galaxy_settings_add_profile(p->app->settings, name);
-        if (profile) {
-            profile_populate(p, name);
-            on_profile_selected(NULL, p);
-            save(p);
-            break;
-        }
-        gtk_label_set_text(GTK_LABEL(error), "Enter a unique name without [ or ].");
+    for (guint i = 0; i < p->bindings->len; i++) binding_refresh(p->bindings->pdata[i]);
+    for (int i = 0; i < ACT_COUNT; i++) {
+        guint key = 0; GdkModifierType mods = 0;
+        galaxy_shortcut_parse(p->app->settings->shortcuts[i], &key, &mods);
+        g_autofree char *name = key ? gtk_accelerator_get_label(key, mods) : g_strdup(_("Disabled"));
+        gtk_button_set_label(GTK_BUTTON(p->shortcuts[i]), name);
     }
-    gtk_widget_destroy(dialog);
+    GalaxyProfile *profile = selected(p);
+    gtk_widget_set_sensitive(p->remove_button, p->app->settings->profiles->len > 1);
+    gtk_widget_set_sensitive(p->default_button, profile && g_strcmp0(profile->name, p->app->settings->default_profile));
+    g_autofree char *problem = NULL;
+    if (profile) galaxy_profile_validate_command(profile, &problem);
+    gtk_label_set_text(GTK_LABEL(p->validation), problem ? problem : "");
+    p->loading = FALSE;
+    preview(p);
+}
+void galaxy_preferences_refresh(GalaxyApp *app, guint changes)
+{
+    if (!app->preferences) return;
+    Preferences *p = g_object_get_data(G_OBJECT(app->preferences), "preferences");
+    if (!p) return;
+    if (changes & GALAXY_CHANGE_STATUS)
+        gtk_label_set_text(GTK_LABEL(p->error), app->settings->error ? app->settings->error : "");
+    if (p->editing) return;
+    if (changes & (GALAXY_CHANGE_PROFILES | GALAXY_CHANGE_RELOAD)) {
+        g_autofree char *name = g_strdup(gtk_combo_box_get_active_id(GTK_COMBO_BOX(p->profile_combo)));
+        populate(p, name);
+    }
+    if (changes & ~GALAXY_CHANGE_STATUS) refresh_controls(p);
+}
+static void profile_selected(GtkComboBox *combo, gpointer data)
+{
+    (void)combo;
+    Preferences *p = data;
+    if (!p->loading) refresh_controls(p);
+}
+static void field_changed(GtkWidget *widget, gpointer data)
+{
+    Binding *binding = data;
+    Preferences *p = binding->prefs;
+    if (p->loading) return;
+    gpointer address = field_address(binding);
+    if (!address) return;
+    char *value = NULL;
+    switch (binding->field->type) {
+    case FIELD_BOOL: *(gboolean *)address = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)); break;
+    case FIELD_INT: *(int *)address = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(widget)); break;
+    case FIELD_TEXT: {
+        value = g_strdup(gtk_entry_get_text(GTK_ENTRY(widget)));
+        GalaxyProfile trial = *selected(p);
+        /* Validate this field separately so either of two broken fields can be repaired. */
+        trial.shell = binding->field->offset == offsetof(GalaxyProfile, shell) ? value : "";
+        trial.cwd = binding->field->offset == offsetof(GalaxyProfile, cwd) ? value : "";
+        g_autofree char *problem = NULL;
+        if (!galaxy_profile_validate_command(&trial, &problem)) {
+            gtk_label_set_text(GTK_LABEL(p->validation), problem);
+            g_free(value);
+            return;
+        }
+        gtk_label_set_text(GTK_LABEL(p->validation), "");
+        break;
+    }
+    case FIELD_FONT: value = gtk_font_chooser_get_font(GTK_FONT_CHOOSER(widget)); break;
+    case FIELD_COLOR: {
+        GdkRGBA color; gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(widget), &color);
+        value = gdk_rgba_to_string(&color); break;
+    }
+    case FIELD_OPACITY: *(double *)address = gtk_range_get_value(GTK_RANGE(widget)) / 100; break;
+    case FIELD_PALETTE: value = g_strdup(gtk_combo_box_get_active_id(GTK_COMBO_BOX(widget))); break;
+    case FIELD_SHAPE: case FIELD_BLINK: *(int *)address = gtk_combo_box_get_active(GTK_COMBO_BOX(widget)); break;
+    }
+    if (value) { g_free(*(char **)address); *(char **)address = value; }
+    save(p, binding->profile ? GALAXY_CHANGE_COLORS : GALAXY_CHANGE_BEHAVIOR);
+}
+static void reset_field(GtkButton *button, gpointer data)
+{
+    (void)button;
+    Binding *binding = data;
+    gpointer address = field_address(binding);
+    if (!address) return;
+    const char *value = binding->field->initial;
+    switch (binding->field->type) {
+    case FIELD_BOOL: case FIELD_INT: case FIELD_SHAPE: case FIELD_BLINK: *(int *)address = atoi(value); break;
+    case FIELD_OPACITY: *(double *)address = g_ascii_strtod(value, NULL); break;
+    default: g_free(*(char **)address); *(char **)address = g_strdup(value);
+    }
+    save(binding->prefs, binding->profile ? GALAXY_CHANGE_COLORS : GALAXY_CHANGE_BEHAVIOR);
+    refresh_controls(binding->prefs);
+}
+static void add_field(Preferences *p, GtkWidget *box, const Field *field, gboolean profile)
+{
+    Binding *binding = g_new0(Binding, 1);
+    binding->prefs = p; binding->field = field; binding->profile = profile;
+    const char *signal = "changed";
+    GtkWidget *widget = NULL;
+    switch (field->type) {
+    case FIELD_BOOL: widget = gtk_check_button_new(); signal = "toggled"; break;
+    case FIELD_INT: widget = gtk_spin_button_new_with_range(-1, 1000000, 1); signal = "value-changed"; break;
+    case FIELD_TEXT: widget = gtk_entry_new(); break;
+    case FIELD_FONT: widget = gtk_font_button_new(); signal = "font-set"; break;
+    case FIELD_COLOR: widget = gtk_color_button_new(); signal = "color-set"; break;
+    case FIELD_OPACITY:
+        widget = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
+        gtk_widget_set_size_request(widget, 180, -1);
+        gtk_scale_set_digits(GTK_SCALE(widget), 0);
+        signal = "value-changed"; break;
+    case FIELD_PALETTE:
+        widget = gtk_combo_box_text_new();
+        for (guint i = 0; i < G_N_ELEMENTS(palette_ids); i++)
+            gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(widget), palette_ids[i], _(palette_labels[i]));
+        break;
+    case FIELD_SHAPE: case FIELD_BLINK: {
+        const char *shapes[] = {N_("Block"), N_("I-beam"), N_("Underline")};
+        const char *blink[] = {N_("Follow desktop"), N_("On"), N_("Off")};
+        widget = gtk_combo_box_text_new();
+        for (int i = 0; i < 3; i++)
+            gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(widget), _(field->type == FIELD_SHAPE ? shapes[i] : blink[i]));
+        break;
+    }
+    }
+    binding->widget = widget;
+    g_ptr_array_add(p->bindings, binding);
+    GtkWidget *line = row(box, _(field->label), widget);
+    GtkWidget *reset = gtk_button_new_from_icon_name("edit-undo-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_widget_set_tooltip_text(reset, _("Restore this setting’s default"));
+    gtk_box_pack_end(GTK_BOX(line), reset, FALSE, FALSE, 0);
+    g_signal_connect(reset, "clicked", G_CALLBACK(reset_field), binding);
+    g_signal_connect(widget, signal, G_CALLBACK(field_changed), binding);
+}
+static void reset_general(GtkButton *button, gpointer data)
+{
+    (void)button; Preferences *p = data;
+    galaxy_settings_reset_general(p->app->settings);
+    save(p, GALAXY_CHANGE_BEHAVIOR); refresh_controls(p);
+}
+static void retry_save(GtkButton *button, gpointer data)
+{
+    (void)button; Preferences *p = data;
+    galaxy_settings_flush(p->app->settings);
+}
+static GtkWidget *build_general(Preferences *p)
+{
+    GtkWidget *box, *page = section(&box);
+    label(box, _("Settings apply immediately. Changes are saved after a short pause."));
+    p->error = label(box, "");
+    gtk_label_set_selectable(GTK_LABEL(p->error), TRUE);
+    GtkWidget *retry = gtk_button_new_with_label(_("Retry saving settings"));
+    gtk_box_pack_start(GTK_BOX(box), retry, FALSE, FALSE, 0);
+    g_signal_connect(retry, "clicked", G_CALLBACK(retry_save), p);
+    for (guint i = 0; i < G_N_ELEMENTS(general_fields); i++) add_field(p, box, &general_fields[i], FALSE);
+    label(box, _("Search covers retained terminal output, not the shell history file. Unlimited scrollback can consume disk space and memory."));
+    label(box, _("Application appearance follows the desktop. Terminal colors are configured per profile."));
+    GtkWidget *reset = gtk_button_new_with_label(_("Restore general defaults"));
+    gtk_box_pack_start(GTK_BOX(box), reset, FALSE, FALSE, 0);
+    g_signal_connect(reset, "clicked", G_CALLBACK(reset_general), p);
+    return page;
 }
 
-static void on_profile_remove(GtkButton *button, gpointer user_data)
+static void name_response(GtkDialog *dialog, int response, GtkWidget *window)
 {
-    Preferences *p = user_data;
-    (void)button;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
-    g_autofree char *name = g_strdup(profile->name);
-    galaxy_settings_remove_profile(p->app->settings, name);
-    profile_populate(p, p->app->settings->default_profile);
-    on_profile_selected(NULL, p);
-    save(p);
-}
-
-static void on_profile_rename(GtkButton *button, gpointer user_data)
-{
-    Preferences *p = user_data;
-    (void)button;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
-    g_autofree char *old_name = g_strdup(profile->name);
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("Rename profile", GTK_WINDOW(p->window),
-        GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL, "Rename", GTK_RESPONSE_ACCEPT, NULL);
-    GtkWidget *entry = gtk_entry_new();
-    gtk_entry_set_text(GTK_ENTRY(entry), old_name);
-    gtk_container_set_border_width(GTK_CONTAINER(entry), 12);
-    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), entry);
-    GtkWidget *error = gtk_label_new("");
-    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), error);
-    gtk_widget_show_all(dialog);
-    gtk_widget_grab_focus(entry);
-    while (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-        g_autofree char *name = g_strstrip(g_strdup(gtk_entry_get_text(GTK_ENTRY(entry))));
-        if (galaxy_settings_rename_profile(p->app->settings, old_name, name)) {
-            for (GList *w = p->app->windows; w; w = w->next) {
-                GalaxyWindow *win = w->data;
-                GtkNotebook *book = GTK_NOTEBOOK(win->notebook);
-                for (int i = 0; i < gtk_notebook_get_n_pages(book); ++i) {
-                    GtkWidget *page = gtk_notebook_get_nth_page(book, i);
-                    GalaxyTab *tab = g_object_get_data(G_OBJECT(page), "galaxy-tab");
-                    if (g_strcmp0(tab->profile_name, old_name) != 0) continue;
-                    g_free(tab->profile_name);
-                    tab->profile_name = g_strdup(name);
+    Preferences *p = g_object_get_data(G_OBJECT(window), "preferences");
+    if (response != GTK_RESPONSE_ACCEPT) { gtk_widget_destroy(GTK_WIDGET(dialog)); return; }
+    GtkWidget *entry = g_object_get_data(G_OBJECT(dialog), "entry");
+    GtkWidget *error = g_object_get_data(G_OBJECT(dialog), "error");
+    const char *source = g_object_get_data(G_OBJECT(dialog), "source");
+    int mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(dialog), "mode"));
+    g_autofree char *name = g_strstrip(g_strdup(gtk_entry_get_text(GTK_ENTRY(entry))));
+    GalaxySettings *s = p->app->settings;
+    gboolean success = mode == 1 ? galaxy_settings_rename_profile(s, source, name) :
+        (mode == 2 ? galaxy_settings_duplicate_profile(s, source, name) != NULL :
+                     galaxy_settings_add_profile(s, name) != NULL);
+    if (!success) {
+        gtk_label_set_text(GTK_LABEL(error), _("Use a unique name of at most 100 bytes, without brackets or line breaks. The source profile must still exist."));
+        return;
+    }
+    if (mode == 1) {
+        for (GList *node = p->app->windows; node; node = node->next) {
+            GalaxyWindow *win = node->data;
+            int count = gtk_notebook_get_n_pages(GTK_NOTEBOOK(win->notebook));
+            for (int i = 0; i < count; i++) {
+                GalaxyTab *tab = g_object_get_data(G_OBJECT(gtk_notebook_get_nth_page(GTK_NOTEBOOK(win->notebook), i)), "galaxy-tab");
+                if (!g_strcmp0(tab->profile_name, source)) {
+                    g_free(tab->profile_name); tab->profile_name = g_strdup(name);
                 }
             }
-            profile_populate(p, name);
-            on_profile_selected(NULL, p);
-            save(p);
-            break;
         }
-        gtk_label_set_text(GTK_LABEL(error), "Enter a unique name without [ or ].");
     }
-    gtk_widget_destroy(dialog);
+    populate(p, name); save(p, GALAXY_CHANGE_PROFILES); refresh_controls(p);
+    gtk_widget_destroy(GTK_WIDGET(dialog));
 }
-
-static void on_profile_default(GtkButton *button, gpointer user_data)
+static void profile_name_dialog(GtkButton *button, gpointer data)
 {
-    Preferences *p = user_data;
-    (void)button;
-    GalaxyProfile *profile = selected_profile(p);
+    Preferences *p = data;
+    int mode = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "mode"));
+    GalaxyProfile *profile = selected(p);
+    if (mode && !profile) return;
+    GtkWidget *dialog = gtk_dialog_new_with_buttons(_("Profile name"), GTK_WINDOW(p->window),
+        GTK_DIALOG_DESTROY_WITH_PARENT, _("Cancel"), GTK_RESPONSE_CANCEL,
+        _("Apply"), GTK_RESPONSE_ACCEPT, NULL);
+    GtkWidget *box = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    margin(box, 16);
+    GtkWidget *entry = gtk_entry_new();
+    gtk_entry_set_max_length(GTK_ENTRY(entry), 100);
+    if (mode == 1) gtk_entry_set_text(GTK_ENTRY(entry), profile->name);
+    gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
+    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+    gtk_container_add(GTK_CONTAINER(box), entry);
+    GtkWidget *error = label(box, "");
+    g_object_set_data(G_OBJECT(dialog), "entry", entry);
+    g_object_set_data(G_OBJECT(dialog), "error", error);
+    g_object_set_data(G_OBJECT(dialog), "mode", GINT_TO_POINTER(mode));
+    g_object_set_data_full(G_OBJECT(dialog), "source", g_strdup(profile ? profile->name : NULL), g_free);
+    g_signal_connect_object(dialog, "response", G_CALLBACK(name_response), p->window, 0);
+    gtk_widget_show_all(dialog); gtk_widget_grab_focus(entry);
+}
+static void profile_remove(GtkButton *button, gpointer data)
+{
+    (void)button; Preferences *p = data;
+    GalaxyProfile *profile = selected(p);
+    if (profile) galaxy_settings_remove_profile(p->app->settings, profile->name);
+    populate(p, p->app->settings->default_profile);
+    save(p, GALAXY_CHANGE_PROFILES); refresh_controls(p);
+}
+static void profile_default(GtkButton *button, gpointer data)
+{
+    (void)button; Preferences *p = data;
+    GalaxyProfile *profile = selected(p);
     if (!profile) return;
     g_free(p->app->settings->default_profile);
     p->app->settings->default_profile = g_strdup(profile->name);
-    on_profile_selected(NULL, p);
-    save(p);
+    save(p, GALAXY_CHANGE_PROFILES); refresh_controls(p);
 }
-
-static void on_font_changed(GtkFontButton *button, gpointer user_data)
+static void profile_reset(GtkButton *button, gpointer data)
 {
-    Preferences *p = user_data;
-    if (p->loading) return;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
-    g_free(profile->font);
-    profile->font = gtk_font_chooser_get_font(GTK_FONT_CHOOSER(button));
-    save(p);
+    (void)button; Preferences *p = data;
+    GalaxyProfile *profile = selected(p);
+    if (profile) galaxy_profile_reset(profile);
+    save(p, GALAXY_CHANGE_COLORS); refresh_controls(p);
 }
-
-static void on_palette_changed(GtkComboBox *combo, gpointer user_data)
-{
-    Preferences *p = user_data;
-    if (p->loading) return;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
-    g_free(profile->palette);
-    profile->palette = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(combo));
-    gboolean custom = g_strcmp0(profile->palette, "Custom") == 0;
-    gtk_widget_set_sensitive(p->foreground, custom);
-    gtk_widget_set_sensitive(p->background, custom);
-    gtk_widget_set_sensitive(p->ansi_grid, custom);
-    save(p);
-}
-
-static void on_color_changed(GtkColorButton *button, gpointer user_data)
-{
-    Preferences *p = user_data;
-    if (p->loading) return;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
-    GdkRGBA rgba;
-    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(button), &rgba);
-    char **target = GTK_WIDGET(button) == p->foreground
-        ? &profile->foreground : &profile->background;
-    g_free(*target);
-    *target = gdk_rgba_to_string(&rgba);
-    save(p);
-}
-
-static void on_opacity_changed(GtkRange *range, gpointer user_data)
-{
-    Preferences *p = user_data;
-    if (p->loading) return;
-    GalaxyProfile *profile = selected_profile(p);
-    if (profile) {
-        profile->opacity = gtk_range_get_value(range) / 100.0;
-        save(p);
-    }
-}
-
-static void on_ansi_changed(GtkColorButton *button, gpointer user_data)
-{
-    Preferences *p = user_data;
-    if (p->loading) return;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
-    int index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "ansi-index"));
-    GdkRGBA color;
-    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(button), &color);
-    g_free(profile->ansi[index]);
-    profile->ansi[index] = gdk_rgba_to_string(&color);
-    save(p);
-}
-
-static void on_shell_changed(GtkEditable *editable, gpointer user_data)
-{
-    Preferences *p = user_data;
-    if (p->loading) return;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
-    g_free(profile->shell);
-    profile->shell = g_strdup(gtk_entry_get_text(GTK_ENTRY(editable)));
-    save(p);
-}
-
-static void on_cwd_changed(GtkEditable *editable, gpointer user_data)
-{
-    Preferences *p = user_data;
-    if (p->loading) return;
-    GalaxyProfile *profile = selected_profile(p);
-    if (!profile) return;
-    g_free(profile->cwd);
-    profile->cwd = g_strdup(gtk_entry_get_text(GTK_ENTRY(editable)));
-    save(p);
-}
-
-static void on_bool_changed(GtkSwitch *button, GParamSpec *pspec, gpointer user_data)
-{
-    Preferences *p = g_object_get_data(G_OBJECT(button), "preferences");
-    gboolean *value = user_data;
-    (void)pspec;
-    if (p->loading) return;
-    *value = gtk_switch_get_active(button);
-    save(p);
-}
-
-static void boolean_row(Preferences *p, GtkWidget *box, const char *name,
-                        gboolean *value)
-{
-    GtkWidget *button = gtk_switch_new();
-    gtk_switch_set_active(GTK_SWITCH(button), *value);
-    g_object_set_data(G_OBJECT(button), "preferences", p);
-    g_signal_connect(button, "notify::active", G_CALLBACK(on_bool_changed), value);
-    row(box, name, button);
-}
-
-static void on_scrollback_changed(GtkSpinButton *spin, gpointer user_data)
-{
-    Preferences *p = user_data;
-    if (p->loading) return;
-    p->app->settings->scrollback = gtk_spin_button_get_value_as_int(spin);
-    save(p);
-}
-
-static void on_unlimited_toggled(GtkToggleButton *button, gpointer data)
-{
-    GtkWidget *spin = g_object_get_data(G_OBJECT(button), "spin");
-    Preferences *p = data;
-    if (p->loading) return;
-    gboolean unlimited = gtk_toggle_button_get_active(button);
-    gtk_widget_set_sensitive(spin, !unlimited);
-    p->app->settings->scrollback = unlimited ? -1 : gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(spin));
-    save(p);
-}
-
-static GtkWidget *build_general(Preferences *p)
-{
-    GtkWidget *page = section();
-    GtkWidget *box = content(page);
-    GalaxySettings *s = p->app->settings;
-    heading(box, "Tabs and interaction");
-    boolean_row(p, box, "Always show the tab bar", &s->show_tabs);
-    boolean_row(p, box, "Copy mouse selection to clipboard", &s->auto_copy);
-    boolean_row(p, box, "Confirm closing a running command", &s->confirm_close);
-    boolean_row(p, box, "Show scrollbar", &s->show_scrollbar);
-    boolean_row(p, box, "Hide mouse pointer while typing", &s->mouse_autohide);
-    heading(box, "Appearance");
-    boolean_row(p, box, "Follow desktop dark mode", &s->follow_dark);
-    heading(box, "Scrollback");
-    GtkWidget *spin = gtk_spin_button_new_with_range(0, 1000000, 1000);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), s->scrollback < 0 ? 10000 : s->scrollback);
-    row(box, "Lines retained in each tab", spin);
-    g_signal_connect(spin, "value-changed", G_CALLBACK(on_scrollback_changed), p);
-    GtkWidget *unlimited = gtk_check_button_new_with_label("Unlimited scrollback (uses more resources)");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(unlimited), s->scrollback == -1);
-    gtk_widget_set_sensitive(spin, s->scrollback != -1);
-    g_object_set_data(G_OBJECT(unlimited), "spin", spin);
-    g_signal_connect(unlimited, "toggled", G_CALLBACK(on_unlimited_toggled), p);
-    gtk_box_pack_start(GTK_BOX(box), unlimited, FALSE, FALSE, 0);
-    return page;
-}
-
 static GtkWidget *build_profiles(Preferences *p)
 {
-    GtkWidget *page = section();
-    GtkWidget *box = content(page);
-    heading(box, "Terminal profiles");
-    GtkWidget *controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    gtk_box_pack_start(GTK_BOX(box), controls, FALSE, FALSE, 0);
+    GtkWidget *box, *page = section(&box);
+    GtkWidget *buttons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     p->profile_combo = gtk_combo_box_text_new();
-    gtk_widget_set_hexpand(p->profile_combo, TRUE);
-    gtk_box_pack_start(GTK_BOX(controls), p->profile_combo, TRUE, TRUE, 0);
-    GtkWidget *add = gtk_button_new_with_label("Add");
-    GtkWidget *rename = gtk_button_new_with_label("Rename");
-    p->remove_button = gtk_button_new_with_label("Remove");
-    gtk_box_pack_start(GTK_BOX(controls), add, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(controls), rename, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(controls), p->remove_button, FALSE, FALSE, 0);
-    p->default_button = gtk_button_new_with_label("Make default");
-    gtk_box_pack_start(GTK_BOX(box), p->default_button, FALSE, FALSE, 0);
-    heading(box, "Text and colors");
-    p->font = gtk_font_button_new();
-    row(box, "Font", p->font);
-    p->palette = gtk_combo_box_text_new();
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(p->palette), "System");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(p->palette), "Dark");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(p->palette), "Light");
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(p->palette), "Custom");
-    row(box, "Color palette", p->palette);
-    p->foreground = gtk_color_button_new();
-    p->background = gtk_color_button_new();
-    row(box, "Custom text color", p->foreground);
-    row(box, "Custom background color", p->background);
-    p->ansi_grid = gtk_grid_new();
-    gtk_grid_set_row_spacing(GTK_GRID(p->ansi_grid), 4);
-    gtk_grid_set_column_spacing(GTK_GRID(p->ansi_grid), 4);
-    for (int i = 0; i < 16; ++i) {
-        p->ansi[i] = gtk_color_button_new();
-        gtk_widget_set_size_request(p->ansi[i], 48, 30);
-        g_autofree char *tip = g_strdup_printf("ANSI color %d", i);
-        gtk_widget_set_tooltip_text(p->ansi[i], tip);
-        g_object_set_data(G_OBJECT(p->ansi[i]), "ansi-index", GINT_TO_POINTER(i));
-        gtk_grid_attach(GTK_GRID(p->ansi_grid), p->ansi[i], i % 4, i / 4, 1, 1);
-        g_signal_connect(p->ansi[i], "color-set", G_CALLBACK(on_ansi_changed), p);
+    gtk_box_pack_start(GTK_BOX(box), p->profile_combo, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), buttons, FALSE, FALSE, 0);
+    const char *names[] = {N_("Add"), N_("Rename"), N_("Duplicate")};
+    for (int i = 0; i < 3; i++) {
+        GtkWidget *button = gtk_button_new_with_label(_(names[i]));
+        g_object_set_data(G_OBJECT(button), "mode", GINT_TO_POINTER(i));
+        gtk_box_pack_start(GTK_BOX(buttons), button, FALSE, FALSE, 0);
+        g_signal_connect(button, "clicked", G_CALLBACK(profile_name_dialog), p);
     }
-    row(box, "Custom ANSI colors", p->ansi_grid);
-    p->opacity = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 25, 100, 1);
-    gtk_widget_set_size_request(p->opacity, 210, -1);
-    gtk_scale_set_digits(GTK_SCALE(p->opacity), 0);
-    row(box, "Background opacity (%)", p->opacity);
-    heading(box, "Shell");
-    p->shell = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(p->shell), "System login shell");
-    gtk_widget_set_tooltip_text(p->shell, "Executable path for new tabs; empty uses the account's shell");
-    row(box, "Shell executable", p->shell);
-    p->cwd = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(p->cwd), "Inherit launch directory");
-    gtk_widget_set_tooltip_text(p->cwd, "Absolute directory for new windows; tabs opened with + inherit the active tab's directory");
-    row(box, "Starting directory", p->cwd);
-    g_signal_connect(p->profile_combo, "changed", G_CALLBACK(on_profile_selected), p);
-    g_signal_connect(add, "clicked", G_CALLBACK(on_profile_add), p);
-    g_signal_connect(rename, "clicked", G_CALLBACK(on_profile_rename), p);
-    g_signal_connect(p->remove_button, "clicked", G_CALLBACK(on_profile_remove), p);
-    g_signal_connect(p->default_button, "clicked", G_CALLBACK(on_profile_default), p);
-    g_signal_connect(p->font, "font-set", G_CALLBACK(on_font_changed), p);
-    g_signal_connect(p->palette, "changed", G_CALLBACK(on_palette_changed), p);
-    g_signal_connect(p->foreground, "color-set", G_CALLBACK(on_color_changed), p);
-    g_signal_connect(p->background, "color-set", G_CALLBACK(on_color_changed), p);
-    g_signal_connect(p->opacity, "value-changed", G_CALLBACK(on_opacity_changed), p);
-    g_signal_connect(p->shell, "changed", G_CALLBACK(on_shell_changed), p);
-    g_signal_connect(p->cwd, "changed", G_CALLBACK(on_cwd_changed), p);
-    profile_populate(p, p->app->settings->default_profile);
-    on_profile_selected(NULL, p);
+    p->remove_button = gtk_button_new_with_label(_("Remove"));
+    p->default_button = gtk_button_new_with_label(_("Make default"));
+    gtk_box_pack_start(GTK_BOX(buttons), p->remove_button, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(buttons), p->default_button, FALSE, FALSE, 0);
+    label(box, _("Removing a profile moves its open tabs to the default profile. Shell and directory changes affect future launches."));
+    p->preview = vte_terminal_new();
+    vte_terminal_set_input_enabled(VTE_TERMINAL(p->preview), FALSE);
+    vte_terminal_set_size(VTE_TERMINAL(p->preview), 48, 4);
+    gtk_widget_set_size_request(p->preview, -1, 110);
+    gtk_widget_set_can_focus(p->preview, FALSE);
+    gtk_box_pack_start(GTK_BOX(box), p->preview, FALSE, FALSE, 0);
+    vte_terminal_feed(VTE_TERMINAL(p->preview), "Galaxy Terminal  λ  café  日本語  🌌\r\n\033[32muser@galaxy\033[0m:\033[34m~/Projects\033[0m $ echo Hello\r\n\033[31mRed \033[33mYellow \033[36mCyan \033[1mBold\033[0m", -1);
+    for (guint i = 0; i < G_N_ELEMENTS(profile_fields); i++) add_field(p, box, &profile_fields[i], TRUE);
+    label(box, _("Custom colors apply when the Custom palette is selected. Opacity changes only the terminal background; blur is controlled by the compositor."));
+    static const char *const colors[] = {"#20232c", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#dcdfe4", "#5b616e", "#ff7b86", "#b3dd91", "#f5d492", "#80c2fb", "#dc9cf1", "#7dd3db", "#ffffff"};
+    for (int i = 0; i < 16; i++) {
+        Field *field = g_new0(Field, 1);
+        field->label = g_strdup_printf(_("Custom ANSI color %d"), i);
+        field->type = FIELD_COLOR; field->offset = offsetof(GalaxyProfile, ansi) + i * sizeof(char *);
+        field->initial = colors[i];
+        add_field(p, box, field, TRUE);
+        /* Dynamic field metadata lives as long as the binding's widget. */
+        Binding *binding = g_ptr_array_index(p->bindings, p->bindings->len - 1);
+        g_object_set_data_full(G_OBJECT(binding->widget), "field-label", (gpointer)field->label, g_free);
+        g_object_set_data_full(G_OBJECT(binding->widget), "field", field, g_free);
+    }
+    p->validation = label(box, "");
+    gtk_style_context_add_class(gtk_widget_get_style_context(p->validation), "galaxy-error");
+    GtkWidget *reset = gtk_button_new_with_label(_("Restore this profile’s defaults"));
+    gtk_box_pack_start(GTK_BOX(box), reset, FALSE, FALSE, 0);
+    g_signal_connect(reset, "clicked", G_CALLBACK(profile_reset), p);
+    g_signal_connect(p->remove_button, "clicked", G_CALLBACK(profile_remove), p);
+    g_signal_connect(p->default_button, "clicked", G_CALLBACK(profile_default), p);
+    g_signal_connect(p->profile_combo, "changed", G_CALLBACK(profile_selected), p);
     return page;
 }
 
-typedef struct {
-    Preferences *preferences;
-    GtkWidget *dialog;
-    GtkWidget *message;
-    GalaxyAction action;
-    char *result;
-} ShortcutCapture;
-
-static gboolean on_shortcut_key(GtkWidget *widget, GdkEventKey *event, gpointer user_data)
+static gboolean shortcut_available(Preferences *p, int action, const char *value)
 {
-    ShortcutCapture *capture = user_data;
-    (void)widget;
-    if (event->keyval == GDK_KEY_Escape) {
-        gtk_dialog_response(GTK_DIALOG(capture->dialog), GTK_RESPONSE_CANCEL);
-        return TRUE;
+    guint key; GdkModifierType mods;
+    if (!galaxy_shortcut_parse(value, &key, &mods)) return FALSE;
+    if (!key) return TRUE;
+    for (int i = 0; i < ACT_COUNT; i++) {
+        guint existing_key; GdkModifierType existing_mods;
+        if (i != action && galaxy_shortcut_parse(p->app->settings->shortcuts[i], &existing_key, &existing_mods) &&
+            key == existing_key && mods == existing_mods) return FALSE;
     }
-    if (event->keyval == GDK_KEY_BackSpace) {
-        capture->result = g_strdup("");
-        gtk_dialog_response(GTK_DIALOG(capture->dialog), GTK_RESPONSE_ACCEPT);
-        return TRUE;
-    }
-    GdkModifierType mods = event->state & gtk_accelerator_get_default_mod_mask();
-    if (!gtk_accelerator_valid(event->keyval, mods)) {
-        gtk_label_set_text(GTK_LABEL(capture->message), "Use a key with Ctrl, Alt, Shift, or F1–F12.");
-        return TRUE;
-    }
-    for (int i = 0; i < ACT_COUNT; ++i) {
-        if (i == (int)capture->action) continue;
-        guint key;
-        GdkModifierType existing;
-        gtk_accelerator_parse(capture->preferences->app->settings->shortcuts[i], &key, &existing);
-        if (key == event->keyval && existing == mods) {
-            gtk_label_set_text(GTK_LABEL(capture->message), "That shortcut is already assigned.");
-            return TRUE;
-        }
-    }
-    capture->result = gtk_accelerator_name(event->keyval, mods);
-    gtk_dialog_response(GTK_DIALOG(capture->dialog), GTK_RESPONSE_ACCEPT);
     return TRUE;
 }
-
-static void on_shortcut_clicked(GtkButton *button, gpointer user_data)
+static gboolean shortcut_key(GtkWidget *dialog, GdkEventKey *event, GtkWidget *window)
 {
-    Preferences *p = user_data;
-    GalaxyAction action = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "action"));
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("Set shortcut", GTK_WINDOW(p->window),
-        GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL, NULL);
-    gtk_window_set_default_size(GTK_WINDOW(dialog), 350, 130);
-    GtkWidget *instructions = gtk_label_new("Press a new shortcut. Backspace clears it; Escape cancels.");
-    gtk_container_set_border_width(GTK_CONTAINER(instructions), 16);
-    GtkWidget *message = gtk_label_new("");
-    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), instructions);
-    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), message);
-    ShortcutCapture capture = {p, dialog, message, action, NULL};
-    g_signal_connect(dialog, "key-press-event", G_CALLBACK(on_shortcut_key), &capture);
-    gtk_widget_show_all(dialog);
-    int response = gtk_dialog_run(GTK_DIALOG(dialog));
-    gtk_widget_destroy(dialog);
-    if (response == GTK_RESPONSE_ACCEPT && capture.result) {
-        GalaxySettings *s = p->app->settings;
-        g_free(s->shortcuts[action]);
-        s->shortcuts[action] = capture.result;
-        guint key = 0;
-        GdkModifierType modifiers = 0;
-        gtk_accelerator_parse(capture.result, &key, &modifiers);
-        g_autofree char *label = key ? gtk_accelerator_get_label(key, modifiers) : g_strdup("Disabled");
-        gtk_button_set_label(button, label);
-        save(p);
-    } else g_free(capture.result);
-}
-
-static GtkWidget *build_shortcuts(Preferences *p)
-{
-    GtkWidget *page = section();
-    GtkWidget *box = content(page);
-    heading(box, "Keyboard shortcuts");
-    for (int i = 0; i < ACT_COUNT; ++i) {
-        guint key = 0;
-        GdkModifierType modifiers = 0;
-        gtk_accelerator_parse(p->app->settings->shortcuts[i], &key, &modifiers);
-        g_autofree char *label = key ? gtk_accelerator_get_label(key, modifiers) : g_strdup("Disabled");
-        GtkWidget *button = gtk_button_new_with_label(label);
-        gtk_widget_set_size_request(button, 145, -1);
-        g_object_set_data(G_OBJECT(button), "action", GINT_TO_POINTER(i));
-        g_signal_connect(button, "clicked", G_CALLBACK(on_shortcut_clicked), p);
-        row(box, galaxy_action_labels[i], button);
+    Preferences *p = g_object_get_data(G_OBJECT(window), "preferences");
+    if (event->keyval == GDK_KEY_Escape) { gtk_widget_destroy(dialog); return TRUE; }
+    int action = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(dialog), "action"));
+    g_autofree char *value = event->keyval == GDK_KEY_BackSpace ? g_strdup("") : galaxy_shortcut_capture(event);
+    GtkWidget *message = g_object_get_data(G_OBJECT(dialog), "message");
+    if (!value || !shortcut_available(p, action, value)) {
+        gtk_label_set_text(GTK_LABEL(message), _("Use an unassigned Ctrl, Alt, Super or function-key shortcut."));
+        return TRUE;
     }
-    return page;
+    g_free(p->app->settings->shortcuts[action]);
+    p->app->settings->shortcuts[action] = g_steal_pointer(&value);
+    save(p, GALAXY_CHANGE_SHORTCUTS); refresh_controls(p);
+    gtk_widget_destroy(dialog);
+    return TRUE;
 }
-
-static void on_preferences_destroy(GtkWidget *widget, gpointer data)
+static void shortcut_clicked(GtkButton *button, gpointer data)
 {
     Preferences *p = data;
-    (void)widget;
-    p->app->preferences = NULL;
-    g_free(p);
+    GtkWidget *dialog = gtk_dialog_new_with_buttons(_("Set shortcut"), GTK_WINDOW(p->window),
+        GTK_DIALOG_DESTROY_WITH_PARENT | GTK_DIALOG_MODAL, _("Cancel"), GTK_RESPONSE_CANCEL, NULL);
+    GtkWidget *box = gtk_dialog_get_content_area(GTK_DIALOG(dialog)); margin(box, 16);
+    label(box, _("Press a shortcut. Backspace disables it; Escape cancels."));
+    GtkWidget *message = label(box, "");
+    g_object_set_data(G_OBJECT(dialog), "action", g_object_get_data(G_OBJECT(button), "action"));
+    g_object_set_data(G_OBJECT(dialog), "message", message);
+    g_signal_connect_object(dialog, "key-press-event", G_CALLBACK(shortcut_key), p->window, 0);
+    g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
+    gtk_widget_show_all(dialog);
 }
-
-void galaxy_preferences_show(GalaxyApp *app, GtkWindow *parent)
+static void shortcut_reset(GtkButton *button, gpointer data)
 {
-    if (app->preferences) {
-        gtk_window_present(GTK_WINDOW(app->preferences));
+    Preferences *p = data;
+    int action = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "action"));
+    const char *value = galaxy_shortcuts[action].accelerator;
+    if (!shortcut_available(p, action, value)) {
+        GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(p->window), GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_INFO, GTK_BUTTONS_CLOSE, "%s", _("The default shortcut is assigned elsewhere. Clear that assignment or restore all shortcut defaults."));
+        g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
+        gtk_widget_show(dialog);
         return;
     }
+    g_free(p->app->settings->shortcuts[action]); p->app->settings->shortcuts[action] = g_strdup(value);
+    save(p, GALAXY_CHANGE_SHORTCUTS); refresh_controls(p);
+}
+static void shortcuts_reset(GtkButton *button, gpointer data)
+{
+    (void)button; Preferences *p = data;
+    galaxy_settings_reset_shortcuts(p->app->settings);
+    save(p, GALAXY_CHANGE_SHORTCUTS); refresh_controls(p);
+}
+static GtkWidget *build_shortcuts(Preferences *p)
+{
+    GtkWidget *box, *page = section(&box);
+    label(box, _("Ctrl + uses the plus key, including Shift when your keyboard layout needs it. Ctrl+Left/Right can be assigned here, but normally belong to shell word navigation."));
+    for (int i = 0; i < ACT_COUNT; i++) {
+        GtkWidget *button = gtk_button_new(); p->shortcuts[i] = button;
+        gtk_widget_set_name(button, galaxy_shortcuts[i].name);
+        gtk_widget_set_size_request(button, 150, -1);
+        g_object_set_data(G_OBJECT(button), "action", GINT_TO_POINTER(i));
+        GtkWidget *line = row(box, _(galaxy_shortcuts[i].label), button);
+        GtkWidget *reset = gtk_button_new_from_icon_name("edit-undo-symbolic", GTK_ICON_SIZE_MENU);
+        gtk_widget_set_tooltip_text(reset, _("Restore this shortcut’s default"));
+        g_object_set_data(G_OBJECT(reset), "action", GINT_TO_POINTER(i));
+        gtk_box_pack_end(GTK_BOX(line), reset, FALSE, FALSE, 0);
+        g_signal_connect(button, "clicked", G_CALLBACK(shortcut_clicked), p);
+        g_signal_connect(reset, "clicked", G_CALLBACK(shortcut_reset), p);
+    }
+    GtkWidget *reset = gtk_button_new_with_label(_("Restore all shortcut defaults"));
+    gtk_box_pack_start(GTK_BOX(box), reset, FALSE, FALSE, 0);
+    g_signal_connect(reset, "clicked", G_CALLBACK(shortcuts_reset), p);
+    return page;
+}
+static void preferences_destroyed(GtkWidget *widget, gpointer data)
+{
+    (void)widget;
+    Preferences *p = data;
+    p->loading = TRUE;
+    p->app->preferences = NULL;
+}
+static void preferences_free(gpointer data)
+{
+    Preferences *p = data;
+    g_ptr_array_unref(p->bindings); g_free(p);
+}
+void galaxy_preferences_show(GalaxyApp *app, GtkWindow *parent)
+{
+    if (app->preferences) { gtk_window_present(GTK_WINDOW(app->preferences)); return; }
     Preferences *p = g_new0(Preferences, 1);
-    p->app = app;
+    p->app = app; p->bindings = g_ptr_array_new_with_free_func(g_free);
     p->window = GTK_WIDGET(xapp_preferences_window_new());
-    app->preferences = p->window;
-    gtk_window_set_title(GTK_WINDOW(p->window), "Galaxy Terminal Preferences");
-    gtk_window_set_default_size(GTK_WINDOW(p->window), 700, 540);
+    gtk_window_set_title(GTK_WINDOW(p->window), _("Galaxy Terminal Preferences"));
+    gtk_window_set_default_size(GTK_WINDOW(p->window), 780, 640);
     gtk_window_set_transient_for(GTK_WINDOW(p->window), parent);
-    gtk_application_add_window(app->application, GTK_WINDOW(p->window));
-    XAppPreferencesWindow *prefs = XAPP_PREFERENCES_WINDOW(p->window);
-    xapp_preferences_window_add_page(prefs, build_general(p), "general", "General");
-    xapp_preferences_window_add_page(prefs, build_profiles(p), "profiles", "Profiles");
-    xapp_preferences_window_add_page(prefs, build_shortcuts(p), "shortcuts", "Shortcuts");
-    g_signal_connect(p->window, "destroy", G_CALLBACK(on_preferences_destroy), p);
+    gtk_window_set_application(GTK_WINDOW(p->window), app->application);
+    XAppPreferencesWindow *window = XAPP_PREFERENCES_WINDOW(p->window);
+    xapp_preferences_window_add_page(window, build_general(p), "general", _("General"));
+    xapp_preferences_window_add_page(window, build_profiles(p), "profiles", _("Profiles"));
+    xapp_preferences_window_add_page(window, build_shortcuts(p), "shortcuts", _("Shortcuts"));
+    g_object_set_data_full(G_OBJECT(p->window), "preferences", p, preferences_free);
+    g_signal_connect(p->window, "destroy", G_CALLBACK(preferences_destroyed), p);
+    app->preferences = p->window;
+    populate(p, app->settings->default_profile);
     gtk_widget_show_all(p->window);
+    galaxy_preferences_refresh(app, GALAXY_CHANGE_ALL);
 }

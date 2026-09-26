@@ -1,0 +1,7 @@
+galaxy-terminal (0.2.0-1) UNRELEASED; urgency=medium
+
+  * Target Debian 14 (forky); require VTE 0.80 and XApp 2.8.
+  * Harden configuration, asynchronous session lifetime and CLI forwarding.
+  * Add full preferences, profile previews, reset controls and regression tests.
+
+ -- The Specter X <thespecter@tuta.com>  Sat, 26 Sep 2026 00:00:00 +0000

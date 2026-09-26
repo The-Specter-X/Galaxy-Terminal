@@ -1,0 +1,19 @@
+Source: galaxy-terminal
+Section: x11
+Priority: optional
+Maintainer: The Specter X <thespecter@tuta.com>
+Build-Depends: debhelper-compat (= 13), meson, pkgconf, libgtk-3-dev (>= 3.24), libvte-2.91-dev (>= 0.80), libxapp-dev (>= 2.8), libpcre2-dev, gettext
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Homepage: https://github.com/The-Specter-X/Galaxy-Terminal
+Vcs-Git: https://github.com/The-Specter-X/Galaxy-Terminal.git
+Vcs-Browser: https://github.com/The-Specter-X/Galaxy-Terminal
+
+Package: galaxy-terminal
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Provides: x-terminal-emulator
+Description: GTK 3 and XApp terminal for Wayland
+ A tabbed terminal using VTE, with searchable scrollback, editable profiles,
+ configurable shortcuts, background opacity and an XApp preferences window.
+ Requires a Wayland session. Does not restore running sessions after closing.

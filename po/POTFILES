@@ -1,0 +1,8 @@
+src/main.c
+src/app.c
+src/commands.c
+src/window.c
+src/session.c
+src/preferences.c
+src/settings.c
+src/shortcuts.c

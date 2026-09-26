@@ -1,0 +1,104 @@
+.TH GALAXY-TERMINAL 1 "September 2026" "Galaxy Terminal 0.2.0" "User Commands"
+.SH NAME
+galaxy-terminal \- GTK 3 and XApp terminal for Wayland
+.SH SYNOPSIS
+.B galaxy-terminal
+.RI [ OPTIONS ]
+.RB [ --
+.IR COMMAND " " ARG ...]
+.br
+.B galaxy-terminal
+.RI [ OPTIONS ]
+.B -e
+.IR COMMAND " " ARG ...
+.SH DESCRIPTION
+Galaxy Terminal uses VTE for terminal emulation and provides tabs, profiles,
+searchable scrollback, configurable shortcuts and an XApp preferences window.
+It requires a Wayland session. It does not restore closed sessions.
+.SH OPTIONS
+.TP
+.B --new-tab
+Open in the active terminal window, or a new window if none exists.
+.TP
+.B --new-window
+Open a new window. This takes precedence over --new-tab.
+.TP
+.BI --profile= NAME
+Use a configured profile.
+.TP
+.BI --working-directory= DIR
+Start in DIR. Relative paths are resolved against the invoking process's directory.
+.TP
+.BI --title= TITLE
+.TQ
+.BI "-T " TITLE
+Set a custom tab title. Empty uses the shell-reported title.
+.TP
+.BI "-e " "COMMAND ARG..."
+.TQ
+.BI "--execute " "COMMAND ARG..."
+.TQ
+.BI "-- " "COMMAND ARG..."
+Run an executable with arguments. All following arguments belong to that command.
+No implicit shell evaluation is performed; invoke sh -c explicitly when needed.
+.TP
+.B --help
+Show help locally without affecting another running instance.
+.TP
+.B --version
+Show the application version locally.
+.SH KEYBOARD
+Ctrl+Shift+T opens a tab; Ctrl+Shift+N opens a window; Ctrl+Shift+W closes a tab.
+Ctrl+Shift+C/V copies/pastes. Ctrl+Shift+F searches retained output.
+Ctrl+Page Up/Down changes tabs. Alt+1 through Alt+8 selects numbered tabs;
+Alt+9 selects the last. Ctrl with the plus/minus character zooms in/out;
+Ctrl+0 resets zoom. Ctrl+comma opens preferences. F11 toggles fullscreen.
+All bindings can be changed or disabled in preferences.
+.PP
+In search, Enter/Shift+Enter finds the next/previous match; Escape closes search.
+Ctrl+Left/Right remain available for shell word navigation by default.
+.SH CONFIGURATION
+.I $XDG_CONFIG_HOME/galaxy-terminal/settings.ini
+or
+.I ~/.config/galaxy-terminal/settings.ini
+stores general settings, profiles and shortcuts. GUI changes are debounced and
+saved automatically. External edits reload; valid external edits take precedence
+over pending GUI changes. Syntax errors retain usable in-memory settings;
+invalid field values use defaults with a warning. Failed saves remain active in
+memory and can be retried from preferences.
+.PP
+The default scrollback is 10,000 lines per tab. A limit of -1 means unlimited
+and can consume more disk and memory. Search examines retained terminal output,
+not shell command-history files. Profiles can be duplicated, renamed and reset.
+Removing a profile moves affected tabs to the default profile.
+.PP
+The default terminal palette is dark. Window controls follow desktop appearance;
+terminal profiles offer Dark, Light, System and Custom colors. Opacity affects
+only the terminal background. Blur is a compositor feature.
+.SH ENVIRONMENT
+CLI-created sessions inherit the invoking process's environment, including when
+forwarded to an existing instance. UI-created tabs inherit the application's
+startup environment, not another shell's exports. TERM is set to xterm-256color,
+COLORTERM to truecolor; inherited TMUX and TMUX_PANE markers are removed.
+.PP
+New UI tabs inherit the active tab's directory/profile. Local OSC 7 directories
+are accepted; remote hosts are rejected. An account login shell is used unless
+the profile names another executable.
+.SH MOUSE
+Selection and clipboard copy/paste are supported. Automatic copy-on-selection
+is optional. VTE arbitrates application mouse reporting; hold Shift to use
+terminal mouse selection or its context menu while an application captures the
+mouse. PRIMARY/middle paste depends on compositor support.
+.SH EXIT STATUS
+Zero indicates a launch request was accepted, not that its child command succeeded.
+Invalid arguments/profiles/directories return a nonzero status. Spawn errors are
+shown in the tab. The application does not wait for the child when invoked as a
+secondary client and does not return the child's exit status.
+.SH NOTES
+Closing a terminal normally hangs up its PTY. Close confirmation checks foreground
+jobs and explicit commands, not every possible shell background job. Use tmux
+when intentional session persistence is required. No image protocols are added;
+Sixel is disabled.
+.SH SEE ALSO
+.BR tmux (1),
+.BR update-alternatives (1)

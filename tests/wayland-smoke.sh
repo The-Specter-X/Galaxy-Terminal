@@ -23,6 +23,8 @@ export XDG_CONFIG_HOME="$tmp/config"
 export WAYLAND_DISPLAY=wayland-galaxy
 export GDK_BACKEND=wayland
 export G_DEBUG=fatal-criticals
+export NO_AT_BRIDGE=1
+export LC_ALL=C.UTF-8
 export DISPLAY=:99
 
 Xvfb "$DISPLAY" -screen 0 1280x800x24 -nolisten tcp >"$tmp/xvfb.log" 2>&1 &
@@ -36,7 +38,7 @@ for attempt in {1..100}; do
     sleep 0.1
 done
 
-weston --backend=x11-backend.so --socket="$WAYLAND_DISPLAY" --idle-time=0 \
+weston --backend=x11 --renderer=pixman --socket="$WAYLAND_DISPLAY" --idle-time=0 \
     >"$tmp/weston.log" 2>&1 &
 weston_pid=$!
 for attempt in {1..100}; do
@@ -53,4 +55,5 @@ if [[ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]; then
 fi
 
 dbus-run-session -- timeout 20s ./build/galaxy-terminal -- /bin/true
-dbus-run-session -- timeout 20s ./build/test-preferences-smoke
+dbus-run-session -- timeout 60s ./build/test-integration
+dbus-run-session -- timeout 45s bash tests/cli-integration.sh

@@ -1,7 +1,8 @@
 [Desktop Entry]
 Name=Galaxy Terminal
-Comment=Terminal emulator for the Cinnamon desktop
+Comment=GTK 3 and XApp terminal for Wayland
 Exec=galaxy-terminal
+TryExec=galaxy-terminal
 Icon=utilities-terminal
 Type=Application
 Categories=GTK;System;TerminalEmulator;
