@@ -10,7 +10,7 @@ sudo apt install weston xvfb dbus-x11 tmux fonts-noto-color-emoji
 bash tests/wayland-smoke.sh
 ```
 
-Despite its historical name, `wayland-smoke.sh` runs the interactive regression executable and CLI integration script as well as a launch test. It starts nested Weston on Xvfb; Galaxy itself is constrained to the Wayland backend. `G_DEBUG=fatal-criticals` catches invalid GTK casts and API misuse. Each test group gets its own D-Bus session. Use a disposable configuration directory when running `test-integration` directly.
+Despite its historical name, `wayland-smoke.sh` runs the interactive regression executable and CLI integration script as well as a launch test. It starts nested Weston on Xvfb; Galaxy itself is constrained to the Wayland backend. `G_DEBUG=fatal-criticals` catches invalid GTK casts and API misuse. Each GUI case and the CLI suite get separate D-Bus sessions; all cases run even if one fails. Use a disposable configuration directory when running `test-integration` directly.
 
 Automated coverage:
 

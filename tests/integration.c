@@ -104,6 +104,21 @@ static void test_tabs_search_shortcuts(void)
     g_assert_true(gtk_notebook_get_nth_page(GTK_NOTEBOOK(win->notebook), 0) == b->page);
     gtk_widget_destroy(win->window); spin(30);
 }
+/* VTE draws on its parent's window but registers a separate input-only window. */
+static GdkWindow *input_window(GdkWindow *window, GtkWidget *widget)
+{
+    gpointer owner = NULL;
+    gdk_window_get_user_data(window, &owner);
+    if (owner == widget) return window;
+    GList *children = gdk_window_get_children(window);
+    for (GList *node = children; node; node = node->next) {
+        GdkWindow *found = input_window(node->data, widget);
+        if (found) { g_list_free(children); return found; }
+    }
+    g_list_free(children);
+    return NULL;
+}
+
 static void test_dialog_lifetime(void)
 {
     GalaxyWindow *win = galaxy_window_new(&app);
@@ -112,8 +127,11 @@ static void test_dialog_lifetime(void)
     galaxy_tab_request_close(tab);
     galaxy_tab_rename(tab);
     g_assert_nonnull(dialog_named("Tab title"));
+    spin(50);
+    GdkWindow *target = input_window(gtk_widget_get_window(win->window), GTK_WIDGET(tab->terminal));
+    g_assert_nonnull(target);
     GdkEvent *event = gdk_event_new(GDK_BUTTON_PRESS);
-    event->button.window = g_object_ref(gtk_widget_get_window(GTK_WIDGET(tab->terminal)));
+    event->button.window = g_object_ref(target);
     event->button.send_event = TRUE;
     event->button.time = GDK_CURRENT_TIME;
     event->button.button = 3;

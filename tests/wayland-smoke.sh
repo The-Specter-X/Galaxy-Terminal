@@ -55,5 +55,11 @@ if [[ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]; then
 fi
 
 dbus-run-session -- timeout 20s ./build/galaxy-terminal -- /bin/true
-dbus-run-session -- timeout 60s ./build/test-integration
-dbus-run-session -- timeout 45s bash tests/cli-integration.sh
+status=0
+for test_case in tabs-search-shortcuts dialog-lifetime preferences-reload local-uri-arguments opacity-backing; do
+    dbus-run-session -- timeout 30s ./build/test-integration -p "/ui/$test_case" \
+        2>&1 | tee "build/meson-logs/$test_case.log" || status=1
+done
+dbus-run-session -- timeout 45s bash tests/cli-integration.sh \
+    2>&1 | tee build/meson-logs/cli-integration.log || status=1
+exit "$status"
