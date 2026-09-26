@@ -15,29 +15,29 @@ struct _Preferences {
     GPtrArray *bindings;
     gboolean loading, editing;
 };
-#define GENERAL(label, type, member, initial) {N_(label), type, offsetof(GalaxySettings, member), initial}
-#define PROFILE(label, type, member, initial) {N_(label), type, offsetof(GalaxyProfile, member), initial}
+#define GENERAL(label, type, member, initial) {label, type, offsetof(GalaxySettings, member), initial}
+#define PROFILE(label, type, member, initial) {label, type, offsetof(GalaxyProfile, member), initial}
 static const Field general_fields[] = {
-    GENERAL("Always show the tab bar", FIELD_BOOL, show_tabs, "0"),
-    GENERAL("Copy mouse selection to clipboard", FIELD_BOOL, auto_copy, "0"),
-    GENERAL("Confirm closing a running command", FIELD_BOOL, confirm_close, "1"),
-    GENERAL("Show scrollbar", FIELD_BOOL, show_scrollbar, "1"),
-    GENERAL("Hide mouse pointer while typing", FIELD_BOOL, mouse_autohide, "0"),
-    GENERAL("Scrollback lines (−1 means unlimited)", FIELD_INT, scrollback, "10000")
+    GENERAL(N_("Always show the tab bar"), FIELD_BOOL, show_tabs, "0"),
+    GENERAL(N_("Copy mouse selection to clipboard"), FIELD_BOOL, auto_copy, "0"),
+    GENERAL(N_("Confirm closing a running command"), FIELD_BOOL, confirm_close, "1"),
+    GENERAL(N_("Show scrollbar"), FIELD_BOOL, show_scrollbar, "1"),
+    GENERAL(N_("Hide mouse pointer while typing"), FIELD_BOOL, mouse_autohide, "0"),
+    GENERAL(N_("Scrollback lines (−1 means unlimited)"), FIELD_INT, scrollback, "10000")
 };
 static const Field profile_fields[] = {
-    PROFILE("Font", FIELD_FONT, font, "Monospace 11"),
-    PROFILE("Color palette", FIELD_PALETTE, palette, "Dark"),
-    PROFILE("Custom text color", FIELD_COLOR, foreground, "#ebedf4"),
-    PROFILE("Custom background color", FIELD_COLOR, background, "#191b24"),
-    PROFILE("Background opacity (%)", FIELD_OPACITY, opacity, "1"),
-    PROFILE("Cursor shape", FIELD_SHAPE, cursor_shape, "0"),
-    PROFILE("Cursor blinking", FIELD_BLINK, cursor_blink, "0"),
-    PROFILE("Audible bell", FIELD_BOOL, audible_bell, "0"),
-    PROFILE("Scroll to bottom on output", FIELD_BOOL, scroll_on_output, "0"),
-    PROFILE("Scroll to bottom on typing", FIELD_BOOL, scroll_on_keystroke, "1"),
-    PROFILE("Shell executable (empty uses login shell)", FIELD_TEXT, shell, ""),
-    PROFILE("Starting directory (empty inherits)", FIELD_TEXT, cwd, "")
+    PROFILE(N_("Font"), FIELD_FONT, font, "Monospace 11"),
+    PROFILE(N_("Color palette"), FIELD_PALETTE, palette, "Dark"),
+    PROFILE(N_("Custom text color"), FIELD_COLOR, foreground, "#ebedf4"),
+    PROFILE(N_("Custom background color"), FIELD_COLOR, background, "#191b24"),
+    PROFILE(N_("Background opacity (%)"), FIELD_OPACITY, opacity, "1"),
+    PROFILE(N_("Cursor shape"), FIELD_SHAPE, cursor_shape, "0"),
+    PROFILE(N_("Cursor blinking"), FIELD_BLINK, cursor_blink, "0"),
+    PROFILE(N_("Audible bell"), FIELD_BOOL, audible_bell, "0"),
+    PROFILE(N_("Scroll to bottom on output"), FIELD_BOOL, scroll_on_output, "0"),
+    PROFILE(N_("Scroll to bottom on typing"), FIELD_BOOL, scroll_on_keystroke, "1"),
+    PROFILE(N_("Shell executable (empty uses login shell)"), FIELD_TEXT, shell, ""),
+    PROFILE(N_("Starting directory (empty inherits)"), FIELD_TEXT, cwd, "")
 };
 static const char *const palette_ids[] = {"Dark", "Light", "System", "Custom"};
 static const char *const palette_labels[] = {N_("Dark"), N_("Light"), N_("Follow desktop"), N_("Custom")};
@@ -119,7 +119,18 @@ static void binding_refresh(Binding *binding)
     switch (binding->field->type) {
     case FIELD_BOOL: gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(widget), *(gboolean *)address); break;
     case FIELD_INT: gtk_spin_button_set_value(GTK_SPIN_BUTTON(widget), *(int *)address); break;
-    case FIELD_TEXT: gtk_entry_set_text(GTK_ENTRY(widget), *(char **)address); break;
+    case FIELD_TEXT: {
+        gtk_entry_set_text(GTK_ENTRY(widget), *(char **)address);
+        GalaxyProfile trial = *selected(binding->prefs);
+        trial.shell = binding->field->offset == offsetof(GalaxyProfile, shell) ? *(char **)address : "";
+        trial.cwd = binding->field->offset == offsetof(GalaxyProfile, cwd) ? *(char **)address : "";
+        g_autofree char *problem = NULL;
+        if (galaxy_profile_validate_command(&trial, &problem))
+            gtk_style_context_remove_class(gtk_widget_get_style_context(widget), "error");
+        else gtk_style_context_add_class(gtk_widget_get_style_context(widget), "error");
+        gtk_widget_set_tooltip_text(widget, problem);
+        break;
+    }
     case FIELD_FONT: gtk_font_chooser_set_font(GTK_FONT_CHOOSER(widget), *(char **)address); break;
     case FIELD_COLOR: {
         GdkRGBA color;
@@ -190,10 +201,14 @@ static void field_changed(GtkWidget *widget, gpointer data)
         g_autofree char *problem = NULL;
         if (!galaxy_profile_validate_command(&trial, &problem)) {
             gtk_label_set_text(GTK_LABEL(p->validation), problem);
+            gtk_style_context_add_class(gtk_widget_get_style_context(widget), "error");
+            gtk_widget_set_tooltip_text(widget, problem);
             g_free(value);
             return;
         }
         gtk_label_set_text(GTK_LABEL(p->validation), "");
+        gtk_style_context_remove_class(gtk_widget_get_style_context(widget), "error");
+        gtk_widget_set_tooltip_text(widget, NULL);
         break;
     }
     case FIELD_FONT: {
@@ -403,6 +418,8 @@ static GtkWidget *build_profiles(Preferences *p)
     gtk_box_pack_start(GTK_BOX(buttons), p->remove_button, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(buttons), p->default_button, FALSE, FALSE, 0);
     label(box, _("Removing a profile moves its open tabs to the default profile. Shell and directory changes affect future launches."));
+    p->validation = label(box, "");
+    gtk_style_context_add_class(gtk_widget_get_style_context(p->validation), "galaxy-error");
     p->preview = vte_terminal_new();
     vte_terminal_set_input_enabled(VTE_TERMINAL(p->preview), FALSE);
     vte_terminal_set_size(VTE_TERMINAL(p->preview), 48, 4);
@@ -413,19 +430,26 @@ static GtkWidget *build_profiles(Preferences *p)
     for (guint i = 0; i < G_N_ELEMENTS(profile_fields); i++) add_field(p, box, &profile_fields[i], TRUE);
     label(box, _("Custom colors apply when the Custom palette is selected. Opacity changes only the terminal background; blur is controlled by the compositor."));
     static const char *const colors[] = {"#20232c", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#dcdfe4", "#5b616e", "#ff7b86", "#b3dd91", "#f5d492", "#80c2fb", "#dc9cf1", "#7dd3db", "#ffffff"};
+    label(box, _("Custom ANSI colors"));
+    GtkWidget *color_grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(color_grid), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(color_grid), 12);
+    gtk_box_pack_start(GTK_BOX(box), color_grid, FALSE, FALSE, 0);
     for (int i = 0; i < 16; i++) {
+        GtkWidget *cell = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        gtk_grid_attach(GTK_GRID(color_grid), cell, i % 4, i / 4, 1, 1);
         Field *field = g_new0(Field, 1);
-        field->label = g_strdup_printf(_("Custom ANSI color %d"), i);
+        field->label = g_strdup_printf("%d", i);
         field->type = FIELD_COLOR; field->offset = offsetof(GalaxyProfile, ansi) + i * sizeof(char *);
         field->initial = colors[i];
-        add_field(p, box, field, TRUE);
+        add_field(p, cell, field, TRUE);
+        g_autofree char *tip = g_strdup_printf(_("Custom ANSI color %d"), i);
+        gtk_widget_set_tooltip_text(cell, tip);
         /* Dynamic field metadata lives as long as the binding's widget. */
         Binding *binding = g_ptr_array_index(p->bindings, p->bindings->len - 1);
         g_object_set_data_full(G_OBJECT(binding->widget), "field-label", (gpointer)field->label, g_free);
         g_object_set_data_full(G_OBJECT(binding->widget), "field", field, g_free);
     }
-    p->validation = label(box, "");
-    gtk_style_context_add_class(gtk_widget_get_style_context(p->validation), "galaxy-error");
     GtkWidget *reset = gtk_button_new_with_label(_("Restore this profile’s defaults"));
     gtk_box_pack_start(GTK_BOX(box), reset, FALSE, FALSE, 0);
     g_signal_connect(reset, "clicked", G_CALLBACK(profile_reset), p);

@@ -47,7 +47,8 @@ wait_file "$tmp/env"
 mkdir "$tmp/directory"
 (cd "$tmp/directory" && "$terminal" --new-tab --working-directory . -- /bin/sh -c 'pwd > "$1"' sh "$tmp/cwd")
 wait_file "$tmp/cwd"
-[[ $(cat "$tmp/cwd") == "$tmp/directory" ]]
+# PWD may retain a trailing /. or a symlink: compare the actual directory.
+[[ $(cat "$tmp/cwd") -ef "$tmp/directory" ]]
 if "$terminal" -e >"$tmp/error" 2>&1; then echo 'Missing -e command was accepted' >&2; exit 1; fi
 if "$terminal" --profile does-not-exist >"$tmp/error" 2>&1; then echo 'Unknown profile was accepted' >&2; exit 1; fi
 kill -0 "$server"

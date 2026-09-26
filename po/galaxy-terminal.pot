@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: galaxy-terminal 0.2.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 08:45+0200\n"
+"POT-Creation-Date: 2026-09-26 11:55+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -47,7 +47,7 @@ msgstr ""
 msgid "DIR"
 msgstr ""
 
-#: src/commands.c:91 src/preferences.c:344
+#: src/commands.c:91 src/preferences.c:359
 msgid "Profile name"
 msgstr ""
 
@@ -89,51 +89,51 @@ msgstr ""
 msgid "No matches"
 msgstr ""
 
-#: src/window.c:297
+#: src/window.c:300
 msgid "Close this window and its running processes?"
 msgstr ""
 
-#: src/window.c:298
+#: src/window.c:301
 msgid "Close window"
 msgstr ""
 
-#: src/window.c:335
+#: src/window.c:341
 msgid "A GTK 3 and XApp terminal for Wayland"
 msgstr ""
 
-#: src/window.c:359
+#: src/window.c:365
 msgid "Profile"
 msgstr ""
 
-#: src/window.c:360
+#: src/window.c:366
 msgid "Apply a profile to the current tab"
 msgstr ""
 
-#: src/window.c:372
+#: src/window.c:378
 msgid "Rename tab…"
 msgstr ""
 
-#: src/window.c:375
+#: src/window.c:381
 msgid "About Galaxy Terminal"
 msgstr ""
 
-#: src/window.c:394
+#: src/window.c:400
 msgid "Search this tab’s scrollback"
 msgstr ""
 
-#: src/window.c:396
+#: src/window.c:402
 msgid "Match case"
 msgstr ""
 
-#: src/window.c:402
+#: src/window.c:408
 msgid "Previous match"
 msgstr ""
 
-#: src/window.c:402
+#: src/window.c:408
 msgid "Next match"
 msgstr ""
 
-#: src/window.c:402
+#: src/window.c:408
 msgid "Close search"
 msgstr ""
 
@@ -145,11 +145,11 @@ msgstr ""
 msgid "Close tab"
 msgstr ""
 
-#: src/session.c:182 src/preferences.c:345 src/preferences.c:471
+#: src/session.c:182 src/preferences.c:360 src/preferences.c:495
 msgid "Cancel"
 msgstr ""
 
-#: src/session.c:183 src/preferences.c:346
+#: src/session.c:183 src/preferences.c:361
 msgid "Apply"
 msgstr ""
 
@@ -179,6 +179,78 @@ msgstr ""
 msgid "Terminal"
 msgstr ""
 
+#: src/preferences.c:21
+msgid "Always show the tab bar"
+msgstr ""
+
+#: src/preferences.c:22
+msgid "Copy mouse selection to clipboard"
+msgstr ""
+
+#: src/preferences.c:23
+msgid "Confirm closing a running command"
+msgstr ""
+
+#: src/preferences.c:24
+msgid "Show scrollbar"
+msgstr ""
+
+#: src/preferences.c:25
+msgid "Hide mouse pointer while typing"
+msgstr ""
+
+#: src/preferences.c:26
+msgid "Scrollback lines (−1 means unlimited)"
+msgstr ""
+
+#: src/preferences.c:29
+msgid "Font"
+msgstr ""
+
+#: src/preferences.c:30
+msgid "Color palette"
+msgstr ""
+
+#: src/preferences.c:31
+msgid "Custom text color"
+msgstr ""
+
+#: src/preferences.c:32
+msgid "Custom background color"
+msgstr ""
+
+#: src/preferences.c:33
+msgid "Background opacity (%)"
+msgstr ""
+
+#: src/preferences.c:34
+msgid "Cursor shape"
+msgstr ""
+
+#: src/preferences.c:35
+msgid "Cursor blinking"
+msgstr ""
+
+#: src/preferences.c:36
+msgid "Audible bell"
+msgstr ""
+
+#: src/preferences.c:37
+msgid "Scroll to bottom on output"
+msgstr ""
+
+#: src/preferences.c:38
+msgid "Scroll to bottom on typing"
+msgstr ""
+
+#: src/preferences.c:39
+msgid "Shell executable (empty uses login shell)"
+msgstr ""
+
+#: src/preferences.c:40
+msgid "Starting directory (empty inherits)"
+msgstr ""
+
 #: src/preferences.c:43
 msgid "Dark"
 msgstr ""
@@ -187,7 +259,7 @@ msgstr ""
 msgid "Light"
 msgstr ""
 
-#: src/preferences.c:43 src/preferences.c:261
+#: src/preferences.c:43 src/preferences.c:276
 msgid "Follow desktop"
 msgstr ""
 
@@ -195,155 +267,159 @@ msgstr ""
 msgid "Custom"
 msgstr ""
 
-#: src/preferences.c:141
+#: src/preferences.c:152
 msgid "Disabled"
 msgstr ""
 
-#: src/preferences.c:204
+#: src/preferences.c:219
 msgid "Choose a font size no larger than 256."
 msgstr ""
 
-#: src/preferences.c:260
+#: src/preferences.c:275
 msgid "Block"
 msgstr ""
 
-#: src/preferences.c:260
+#: src/preferences.c:275
 msgid "I-beam"
 msgstr ""
 
-#: src/preferences.c:260
+#: src/preferences.c:275
 msgid "Underline"
 msgstr ""
 
-#: src/preferences.c:261
+#: src/preferences.c:276
 msgid "On"
 msgstr ""
 
-#: src/preferences.c:261
+#: src/preferences.c:276
 msgid "Off"
 msgstr ""
 
-#: src/preferences.c:272
+#: src/preferences.c:287
 msgid "Restore this setting’s default"
 msgstr ""
 
-#: src/preferences.c:291
+#: src/preferences.c:306
 msgid "Settings apply immediately. Changes are saved after a short pause."
 msgstr ""
 
-#: src/preferences.c:294
+#: src/preferences.c:309
 msgid "Retry saving settings"
 msgstr ""
 
-#: src/preferences.c:298
+#: src/preferences.c:313
 msgid ""
 "Search covers retained terminal output, not the shell history file. "
 "Unlimited scrollback can consume disk space and memory."
 msgstr ""
 
-#: src/preferences.c:299
+#: src/preferences.c:314
 msgid ""
 "Application appearance follows the desktop. Terminal colors are configured "
 "per profile."
 msgstr ""
 
-#: src/preferences.c:300
+#: src/preferences.c:315
 msgid "Restore general defaults"
 msgstr ""
 
-#: src/preferences.c:320
+#: src/preferences.c:335
 msgid ""
 "Use a unique name of at most 100 bytes, without brackets or line breaks. The "
 "source profile must still exist."
 msgstr ""
 
-#: src/preferences.c:394
+#: src/preferences.c:409
 msgid "Add"
 msgstr ""
 
-#: src/preferences.c:394
+#: src/preferences.c:409
 msgid "Rename"
 msgstr ""
 
-#: src/preferences.c:394
+#: src/preferences.c:409
 msgid "Duplicate"
 msgstr ""
 
-#: src/preferences.c:401
+#: src/preferences.c:416
 msgid "Remove"
 msgstr ""
 
-#: src/preferences.c:402
+#: src/preferences.c:417
 msgid "Make default"
 msgstr ""
 
-#: src/preferences.c:405
+#: src/preferences.c:420
 msgid ""
 "Removing a profile moves its open tabs to the default profile. Shell and "
 "directory changes affect future launches."
 msgstr ""
 
-#: src/preferences.c:414
+#: src/preferences.c:431
 msgid ""
 "Custom colors apply when the Custom palette is selected. Opacity changes "
 "only the terminal background; blur is controlled by the compositor."
 msgstr ""
 
-#: src/preferences.c:418
+#: src/preferences.c:433
+msgid "Custom ANSI colors"
+msgstr ""
+
+#: src/preferences.c:446
 #, c-format
 msgid "Custom ANSI color %d"
 msgstr ""
 
-#: src/preferences.c:429
+#: src/preferences.c:453
 msgid "Restore this profile’s defaults"
 msgstr ""
 
-#: src/preferences.c:458
+#: src/preferences.c:482
 msgid "Use an unassigned Ctrl, Alt, Super or function-key shortcut."
 msgstr ""
 
-#: src/preferences.c:470
+#: src/preferences.c:494
 msgid "Set shortcut"
 msgstr ""
 
-#: src/preferences.c:473
+#: src/preferences.c:497
 msgid "Press a shortcut. Backspace disables it; Escape cancels."
 msgstr ""
 
-#: src/preferences.c:488
+#: src/preferences.c:512
 msgid ""
 "The default shortcut is assigned elsewhere. Clear that assignment or restore "
 "all shortcut defaults."
 msgstr ""
 
-#: src/preferences.c:505
+#: src/preferences.c:529
 msgid ""
 "Ctrl + uses the plus key, including Shift when your keyboard layout needs "
 "it. Ctrl+Left/Right can be assigned here, but normally belong to shell word "
 "navigation."
 msgstr ""
 
-#: src/preferences.c:513
+#: src/preferences.c:537
 msgid "Restore this shortcut’s default"
 msgstr ""
 
-#: src/preferences.c:519
+#: src/preferences.c:543
 msgid "Restore all shortcut defaults"
 msgstr ""
 
-#: src/preferences.c:542
+#: src/preferences.c:566
 msgid "Galaxy Terminal Preferences"
 msgstr ""
 
-#: src/preferences.c:547
+#: src/preferences.c:571
 msgid "General"
 msgstr ""
 
-#: src/preferences.c:548
+#: src/preferences.c:572
 msgid "Profiles"
 msgstr ""
 
-#: src/preferences.c:549
+#: src/preferences.c:573
 msgid "Shortcuts"
 msgstr ""
 
